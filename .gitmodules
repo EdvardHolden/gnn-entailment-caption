@@ -1,0 +1,3 @@
+[submodule "logical_entailment_dataset"]
+	path = logical_entailment_dataset
+	url = https://github.com/deepmind/logical-entailment-dataset
