@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+import torch
+from torch.nn.functional import binary_cross_entropy_with_logits
+from torch.optim import Adam
+from tqdm import tqdm
+
+from common import mk_loader
+from statistics import Writer
+
+from models import SimpleModel as Model
+EPOCHS = 32
+
+def batch_loss(model, batch):
+    batch = batch.to('cuda')
+    y = model(batch)
+    loss = binary_cross_entropy_with_logits(y, batch.y)
+    del batch
+    return (y, loss)
+
+def validation_loss(model, validation):
+    losses = []
+    with torch.no_grad():
+        for batch in tqdm(validation):
+            _, loss =  batch_loss(model, batch)
+            losses.append(loss.mean())
+
+    return torch.tensor(losses).mean()
+
+def train():
+    train = mk_loader('data', 'train.txt')
+    validation = mk_loader('data', 'validate.txt')
+
+    model = Model().to('cuda')
+    optimizer = Adam(model.parameters())
+
+    stats = Writer(model)
+    best_loss = torch.tensor(float('inf'))
+
+    while True:
+        stats.report_model_parameters()
+
+        print("validating...")
+        model.eval()
+        val_loss = validation_loss(model, validation)
+        stats.report_validation_loss(val_loss)
+        if val_loss < best_loss:
+            torch.save(model.state_dict(), 'model.pt')
+            best_loss = val_loss
+        print(f"...done, loss {val_loss:.3E}")
+
+        model.train()
+        for batch in tqdm(train):
+            optimizer.zero_grad()
+            y, loss = batch_loss(model, batch)
+            loss.backward()
+            optimizer.step()
+
+            stats.report_train_loss(loss.mean())
+            if stats.step % 32 == 0:
+                stats.report_output(batch.y, torch.sigmoid(y))
+            stats.on_step()
+
+if __name__ == '__main__':
+    torch.manual_seed(0)
+    try:
+        train()
+    except KeyboardInterrupt:
+        pass
