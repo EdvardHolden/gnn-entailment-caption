@@ -11,11 +11,6 @@ class Writer:
 
     def report_output(self, actual, predicted):
         self.writer.add_histogram(
-            'output/actual',
-            actual,
-            global_step=self.step
-        )
-        self.writer.add_histogram(
             'output/predicted',
             predicted,
             global_step=self.step

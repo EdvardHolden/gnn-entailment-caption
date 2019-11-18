@@ -2,8 +2,9 @@ from torch.utils.data import DataLoader
 from torch_geometric.data import Batch
 
 from dataset import LogicalEntailmentDataset
+from models import Model
 
-BATCH_SIZE = 256
+BATCH_SIZE = 64
 
 def mk_loader(root, name, **kwargs):
     dataset = LogicalEntailmentDataset(root, name=name)

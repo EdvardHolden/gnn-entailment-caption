@@ -4,17 +4,15 @@ from torch.nn.functional import binary_cross_entropy_with_logits
 from torch_geometric.data import Batch
 from tqdm import tqdm
 
-from common import mk_loader
+from common import Model, mk_loader
 from dataset import LogicalEntailmentDataset
 from statistics import Writer
-
-from models import SimpleModel as Model
 
 def accuracy(model, data):
     total = 0
     correct = 0
     with torch.no_grad():
-        for batch in data:
+        for batch in tqdm(data):
             batch = batch.to('cuda')
             actual = batch.y
             predicted = torch.sigmoid(model(batch)).round().long()
@@ -43,12 +41,12 @@ def eval():
     test_massive_acc = accuracy(model, test_massive)
     test_exam_acc = accuracy(model, test_exam)
 
-    print(f"validation: {val_acc:.1f}%")
-    print(f"test (easy): {test_easy_acc:.1f}%")
-    print(f"test (hard): {test_hard_acc:.1f}%")
-    print(f"test (big): {test_big_acc:.1f}%")
-    print(f"test (massive): {test_massive_acc:.1f}%")
-    print(f"test (exam): {test_exam_acc:.1f}%")
+    print(f"validation:\t{val_acc:.1f}%")
+    print(f"test (easy):\t{test_easy_acc:.1f}%")
+    print(f"test (hard):\t{test_hard_acc:.1f}%")
+    print(f"test (big):\t{test_big_acc:.1f}%")
+    print(f"test (massive):\t{test_massive_acc:.1f}%")
+    print(f"test (exam):\t{test_exam_acc:.1f}%")
 
 if __name__ == '__main__':
     torch.manual_seed(0)
