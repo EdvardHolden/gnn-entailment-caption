@@ -2,7 +2,6 @@ from torch.utils.data import DataLoader
 from torch_geometric.data import Batch
 
 from dataset import LogicalEntailmentDataset
-from models import Model
 
 BATCH_SIZE = 64
 

@@ -4,8 +4,9 @@ from torch.nn.functional import binary_cross_entropy_with_logits
 from torch_geometric.data import Batch
 from tqdm import tqdm
 
-from common import Model, mk_loader
+from common import mk_loader
 from dataset import LogicalEntailmentDataset
+from models import Model
 from statistics import Writer
 
 def accuracy(model, data):
