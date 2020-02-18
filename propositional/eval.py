@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 from common import mk_loader
 from dataset import LogicalEntailmentDataset
-from models import Model
+from model import Model
 from statistics import Writer
 
 def accuracy(model, data):
@@ -31,7 +31,7 @@ def eval():
     test_massive = mk_loader('data', 'test_massive.txt')
     test_exam = mk_loader('data', 'test_exam.txt')
 
-    model = Model().to('cuda')
+    model = Model(4).to('cuda')
     model.load_state_dict(torch.load('model.pt'))
     model.eval()
 

@@ -1,8 +1,7 @@
 import torch
-from torch.nn import BatchNorm1d, Dropout, Linear, Module, ModuleList
+from torch.nn import BatchNorm1d, Embedding, Linear, Module, ModuleList
 from torch.nn.functional import relu
 from torch_geometric import nn as geom
-from torch_geometric.utils import to_undirected
 
 LAYERS = 48
 K = 8
@@ -66,9 +65,9 @@ class GlobalPoolLayer(Module):
         return geom.global_mean_pool(x, batch)
 
 class Model(Module):
-    def __init__(self):
+    def __init__(self, input_size):
         super().__init__()
-        self.input = Linear(4, 2 * K)
+        self.input = Embedding(input_size, 2 * K)
         self.dense = DenseBlock(LAYERS)
         self.global_pool = GlobalPoolLayer(2 * (LAYERS + 1) * K)
         self.output = FullyConnectedLayer(2 * (LAYERS + 1) * K, 1)

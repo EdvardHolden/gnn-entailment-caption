@@ -28,7 +28,7 @@ def train():
     train = mk_loader('data', 'train.txt')
     validation = mk_loader('data', 'validate.txt')
 
-    model = Model().to('cuda')
+    model = Model(4).to('cuda')
     optimizer = SGD(
         model.parameters(),
         lr=0.1,

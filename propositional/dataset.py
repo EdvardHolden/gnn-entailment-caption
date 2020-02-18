@@ -77,7 +77,7 @@ def graph_of(line):
             assert b'a' <= node and node <= b'z'
             x.append(VAR)
 
-    x = torch.eye(AND + 1)[x]
+    x = torch.tensor(x)
     edge_index = torch.tensor([sources, targets], dtype=torch.long)
     y = torch.tensor([entailed])
     return Data(x=x, edge_index=edge_index, y=y)

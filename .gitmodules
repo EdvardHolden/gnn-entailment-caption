@@ -1,3 +1,6 @@
 [submodule "logical_entailment_dataset"]
 	path = propositional/logical_entailment_dataset
 	url = https://github.com/deepmind/logical-entailment-dataset
+[submodule "fol_entailment_dataset"]
+	path = fol_entailment_dataset
+	url = https://github.com/MichaelRawson/fol-entailment-dataset
