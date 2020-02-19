@@ -75,7 +75,6 @@ def train():
                 stats.report_output(batch.y, torch.sigmoid(y))
             stats.on_step()
             del batch
-            torch.cuda.empty_cache()
 
 if __name__ == '__main__':
     torch.manual_seed(0)

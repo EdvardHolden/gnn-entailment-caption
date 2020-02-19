@@ -1,7 +1,7 @@
 from torch.utils.data import DataLoader
 from torch_geometric.data import Batch
 
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 
 def mk_loader(data):
     return DataLoader(
@@ -10,5 +10,5 @@ def mk_loader(data):
         collate_fn=Batch.from_data_list,
         shuffle=True,
         pin_memory=True,
-        num_workers=8
+        num_workers=1
     )

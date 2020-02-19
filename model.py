@@ -4,7 +4,7 @@ from torch.nn.functional import relu
 from torch_geometric import nn as geom
 
 LAYERS = 32
-K = 16
+K = 8
 
 class FullyConnectedLayer(Module):
     def __init__(self, in_channels, out_channels):
