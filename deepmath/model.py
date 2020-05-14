@@ -3,7 +3,7 @@ from torch.nn import BatchNorm1d, Embedding, Linear, Module, ModuleList
 from torch.nn.functional import relu
 from torch_geometric import nn as geom
 
-LAYERS = 32
+LAYERS = 24
 K = 8
 
 class FullyConnectedLayer(Module):

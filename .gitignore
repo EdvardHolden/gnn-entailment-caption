@@ -1,5 +1,9 @@
-data/
+deepmath/target/
+deepmath/nndata/
+deepmath/Cargo.lock
+propositional/data/
 runs/
 
 __pycache__/
 *.pt
+*.so

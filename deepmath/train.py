@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from pathlib import Path
 import torch
 from torch.nn.functional import binary_cross_entropy_with_logits
 from torch.optim import SGD
@@ -7,8 +8,7 @@ from tqdm import tqdm
 
 from common import mk_loader
 from model import Model
-from propositional.statistics import Writer
-from fol_entailment_dataset.dataset import FOLEntailmentDataset
+from statistics import Writer
 
 def batch_loss(model, batch):
     batch = batch.to('cuda')
@@ -27,9 +27,8 @@ def validation_loss(model, validation):
     return torch.tensor(losses).mean()
 
 def train():
-    dataset = FOLEntailmentDataset('fol_entailment_dataset/data')
-    train = mk_loader(dataset[:98000])
-    validation = mk_loader(dataset[98000:99000])
+    train = mk_loader(Path(__file__).parent, 'train.txt')
+    validation = mk_loader(Path(__file__).parent, 'validation.txt')
 
     model = Model(17).to('cuda')
     optimizer = SGD(
@@ -74,7 +73,6 @@ def train():
             if stats.step % 32 == 0:
                 stats.report_output(batch.y, torch.sigmoid(y))
             stats.on_step()
-            del batch
 
 if __name__ == '__main__':
     torch.manual_seed(0)

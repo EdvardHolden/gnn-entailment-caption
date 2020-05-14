@@ -1,0 +1,23 @@
+[package]
+name = "parser"
+version = "0.1.0"
+authors = ["Michael Rawson <michael@rawsons.uk>"]
+edition = "2018"
+
+[lib]
+name = "parser"
+crate-type = ["cdylib"]
+
+[dependencies]
+nom = "5"
+numpy = "0.8"
+petgraph = "0.5"
+tptp = "0.22"
+
+[dependencies.pyo3]
+version = "0.9"
+features = ["extension-module"]
+
+[profile.release]
+codegen-units = 1
+lto = true
