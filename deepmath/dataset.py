@@ -21,24 +21,35 @@ class DeepMathDataset(InMemoryDataset):
         stem = Path(self.name).stem
         return [f'{stem}.pt']
 
-    def process_data(self, f):
-        conjecture = next(f).strip()[2:]
-        for line in f:
-            y = torch.tensor([1.0 if line.startswith(b'+') else 0.0])
-            formula = line[2:]
-            nodes, sources, targets = graph(conjecture, formula)
+    def read_problem(self, problem):
+        path = Path(self.root) / 'nndata' / problem.strip()
+        with open(path, 'rb') as f:
+            conjecture = next(f).strip()[2:]
+            premises, target = zip(*[(
+                line[2:],
+                1.0 if line.startswith(b'+') else 0.0,
+            ) for line in f])
+            nodes, sources, targets, premise_indices = graph(
+                conjecture,
+                premises
+            )
             x = torch.tensor(nodes)
             edge_index = torch.tensor([sources, targets])
-            data = Data(x=x, edge_index=edge_index, y=y)
-            yield data
+            premise_index = torch.tensor(premise_indices)
+            y = torch.tensor(target)
+            data = Data(
+                x=x,
+                edge_index=edge_index,
+                premise_index=premise_index,
+                y=y
+            )
+            return data
 
     def process(self):
         data_list = []
         with open(self.raw_paths[0], 'r') as problems:
             for problem in tqdm(problems):
-                path = Path(self.root) / 'nndata' / problem.strip()
-                with open(path, 'rb') as data_file:
-                    data_list.extend(self.process_data(data_file))
+                data_list.append(self.read_problem(problem))
         data, slices = self.collate(data_list)
         out = Path(self.processed_dir) / self.processed_file_names[0]
         torch.save((data, slices), out)

@@ -75,10 +75,11 @@ class Model(Module):
     def forward(self, input_batch):
         x = input_batch.x
         edge_index = input_batch.edge_index
+        premise_index = input_batch.premise_index
         batch = input_batch.batch
 
         x = self.input(x)
         x = self.dense(x, edge_index)
-        x = self.global_pool(x, batch)
+        x = x[premise_index]
         x = self.output(x).squeeze(-1)
         return x

@@ -2,7 +2,7 @@ use numpy::{PyArray, PyArray1};
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::Directed;
 use pyo3::prelude::*;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use tptp::parsers::fof_annotated;
 use tptp::syntax::*;
 use tptp::visitor::Visitor;
@@ -19,7 +19,6 @@ enum NodeType {
     Negation,
     And,
     Or,
-    Implication,
     Equivalent,
     Forall,
     Exists,
@@ -30,51 +29,32 @@ enum NodeType {
 #[derive(Default)]
 struct GraphBuilder {
     graph: Graph<NodeType, (), Directed, u32>,
-    stack: Vec<Vec<NodeIndex>>,
+    last: NodeIndex,
     functors: HashMap<String, NodeIndex>,
     variables: HashMap<String, NodeIndex>,
     terms: HashMap<Vec<NodeIndex>, NodeIndex>,
+    equalities: HashMap<(NodeIndex, NodeIndex), NodeIndex>,
+    negations: HashMap<NodeIndex, NodeIndex>,
+    conjunctions: HashMap<BTreeSet<NodeIndex>, NodeIndex>,
+    disjunctions: HashMap<BTreeSet<NodeIndex>, NodeIndex>,
 }
 
 impl GraphBuilder {
-    fn children(&mut self) -> Vec<NodeIndex> {
-        self.stack.pop().unwrap()
-    }
-
-    fn level(&mut self) {
-        self.stack.push(vec![]);
-    }
-
-    fn last(&mut self) -> NodeIndex {
-        self.stack.last_mut().unwrap().pop().unwrap()
-    }
-
-    fn record(&mut self, child: NodeIndex) {
-        self.stack.last_mut().unwrap().push(child);
-    }
-
-    fn visit(&mut self, fof: FofAnnotated, conjecture: bool) {
+    fn visit(&mut self, fof: FofAnnotated, conjecture: bool) -> NodeIndex {
         self.variables.clear();
-        self.stack.clear();
-        self.level();
         self.visit_fof_formula(fof.formula);
         let node_type = if conjecture {
             NodeType::Conjecture
         } else {
             NodeType::Axiom
         };
-        let formula = self.last();
+        let formula = self.last;
         let marker = self.graph.add_node(node_type);
         self.graph.add_edge(marker, formula, ());
+        marker
     }
 
     fn finish(self) -> (Vec<i64>, Vec<i64>, Vec<i64>) {
-        /*
-        for node_index in self.graph.node_indices() {
-            self.graph.add_edge(node_index, node_index, ());
-        }
-        */
-
         let nodes = self
             .graph
             .raw_nodes()
@@ -97,30 +77,27 @@ impl<'v> Visitor<'v> for GraphBuilder {
         let key = format!("{}", variable);
         let variables = &mut self.variables;
         let graph = &mut self.graph;
-        let index = *variables
+        self.last = *variables
             .entry(key)
             .or_insert_with(|| graph.add_node(NodeType::Variable));
-        self.record(index)
     }
 
     fn visit_functor(&mut self, functor: Functor) {
         let key = format!("{}", functor);
         let functors = &mut self.functors;
         let graph = &mut self.graph;
-        let index = *functors
+        self.last = *functors
             .entry(key)
             .or_insert_with(|| graph.add_node(NodeType::Functor));
-        self.record(index)
     }
 
     fn visit_defined_term(&mut self, defined: DefinedTerm) {
         let key = format!("{}", defined);
         let functors = &mut self.functors;
         let graph = &mut self.graph;
-        let index = *functors
+        self.last = *functors
             .entry(key)
             .or_insert_with(|| graph.add_node(NodeType::Functor));
-        self.record(index)
     }
 
     fn visit_fof_defined_plain_formula(&mut self, defined: FofDefinedPlainFormula) {
@@ -132,108 +109,138 @@ impl<'v> Visitor<'v> for GraphBuilder {
         } else {
             unimplemented!()
         };
-        let node = self.graph.add_node(node_type);
-        self.record(node);
+        self.last = self.graph.add_node(node_type);
     }
 
     fn visit_fof_plain_term(&mut self, term: FofPlainTerm) {
         use FofPlainTerm::*;
-        match term {
-            Constant(constant) => self.visit_constant(constant),
-            Function(functor, arguments) => {
-                self.level();
-                self.visit_functor(functor);
-                for argument in arguments.0 {
-                    self.visit_fof_term(argument);
-                }
-                let key = self.children();
+        let (functor, arguments) = match term {
+            Constant(constant) => (constant.0, vec![]),
+            Function(functor, arguments) => (functor, arguments.0),
+        };
+        self.visit_functor(functor);
+        let functor = self.last;
 
-                let terms = &mut self.terms;
-                let graph = &mut self.graph;
-                let index = *terms.entry(key.clone()).or_insert_with(|| {
-                    let mut arg_nodes = vec![];
-                    for argument in &key[1..] {
-                        let arg_node = graph.add_node(NodeType::Argument);
-                        graph.add_edge(arg_node, *argument, ());
-                        arg_nodes.push(arg_node);
-                    }
-                    let app_node = graph.add_node(NodeType::Application);
-                    graph.add_edge(app_node, key[0], ());
-                    for arg_node in &arg_nodes {
-                        graph.add_edge(app_node, *arg_node, ());
-                    }
-                    for i in 1..arg_nodes.len() {
-                        graph.add_edge(arg_nodes[i - 1], arg_nodes[i], ());
-                    }
-                    app_node
-                });
-                self.record(index)
-            }
+        let mut children = vec![];
+        for argument in arguments {
+            self.visit_fof_term(argument);
+            children.push(self.last);
         }
+
+        let mut key = vec![functor];
+        key.extend_from_slice(&children);
+        let terms = &mut self.terms;
+        let graph = &mut self.graph;
+        self.last = *terms.entry(key).or_insert_with(|| {
+            let mut arg_nodes = vec![];
+            for argument in children {
+                let arg_node = graph.add_node(NodeType::Argument);
+                graph.add_edge(arg_node, argument, ());
+                arg_nodes.push(arg_node);
+            }
+            let app_node = graph.add_node(NodeType::Application);
+            graph.add_edge(app_node, functor, ());
+            for arg_node in &arg_nodes {
+                graph.add_edge(app_node, *arg_node, ());
+            }
+            for i in 1..arg_nodes.len() {
+                graph.add_edge(arg_nodes[i - 1], arg_nodes[i], ());
+            }
+            app_node
+        });
     }
 
     fn visit_fof_defined_infix_formula(&mut self, defined_infix_formula: FofDefinedInfixFormula) {
         self.visit_fof_term(defined_infix_formula.left);
+        let left = self.last;
         self.visit_fof_term(defined_infix_formula.right);
-        let right = self.last();
-        let left = self.last();
-        let equality = self.graph.add_node(NodeType::Equality);
-        self.graph.add_edge(equality, left, ());
-        self.graph.add_edge(equality, right, ());
-        self.record(equality);
+        let right = self.last;
+
+        self.last = if let Some(node) = self.equalities.get(&(left, right)) {
+            *node
+        } else {
+            let equality = self.graph.add_node(NodeType::Equality);
+            self.graph.add_edge(equality, left, ());
+            self.graph.add_edge(equality, right, ());
+            self.equalities.insert((left, right), equality);
+            self.equalities.insert((right, left), equality);
+            equality
+        }
     }
 
     fn visit_fof_unary_formula(&mut self, unary_formula: FofUnaryFormula) {
-        match unary_formula {
-            FofUnaryFormula::Unary(_, formula) => {
-                let not = self.graph.add_node(NodeType::Negation);
-                self.visit_fof_unit_formula(formula);
-                let formula = self.last();
-                self.graph.add_edge(not, formula, ());
-                self.record(not);
-            }
+        let formula = match unary_formula {
+            FofUnaryFormula::Unary(_, formula) => formula,
             _ => unimplemented!(),
+        };
+        self.visit_fof_unit_formula(formula);
+        let formula = self.last;
+
+        self.last = if let Some(node) = self.negations.get(&formula) {
+            *node
+        } else {
+            let negation = self.graph.add_node(NodeType::Negation);
+            self.graph.add_edge(negation, formula, ());
+            negation
+        }
+    }
+
+    fn visit_fof_and_formula(&mut self, and_formula: FofAndFormula) {
+        let mut children = BTreeSet::new();
+        for formula in and_formula.0 {
+            self.visit_fof_unit_formula(formula);
+            children.insert(self.last);
+        }
+
+        self.last = if let Some(node) = self.conjunctions.get(&children) {
+            *node
+        } else {
+            let conjunction = self.graph.add_node(NodeType::And);
+            for child in children {
+                self.graph.add_edge(conjunction, child, ());
+            }
+            conjunction
         }
     }
 
     fn visit_fof_or_formula(&mut self, or_formula: FofOrFormula) {
-        let or = self.graph.add_node(NodeType::Or);
+        let mut children = BTreeSet::new();
         for formula in or_formula.0 {
             self.visit_fof_unit_formula(formula);
-            let formula = self.last();
-            self.graph.add_edge(or, formula, ());
+            children.insert(self.last);
         }
-        self.record(or);
-    }
 
-    fn visit_fof_and_formula(&mut self, and_formula: FofAndFormula) {
-        let and = self.graph.add_node(NodeType::And);
-        for formula in and_formula.0 {
-            self.visit_fof_unit_formula(formula);
-            let formula = self.last();
-            self.graph.add_edge(and, formula, ());
+        self.last = if let Some(node) = self.disjunctions.get(&children) {
+            *node
+        } else {
+            let disjunction = self.graph.add_node(NodeType::Or);
+            for child in children {
+                self.graph.add_edge(disjunction, child, ());
+            }
+            disjunction
         }
-        self.record(and);
     }
 
     fn visit_fof_binary_nonassoc(&mut self, nonassoc: FofBinaryNonassoc) {
         self.visit_fof_unit_formula(nonassoc.left);
-        let left = self.last();
+        let left = self.last;
         self.visit_fof_unit_formula(nonassoc.right);
-        let right = self.last();
-        match nonassoc.op {
+        let right = self.last;
+
+        self.last = match nonassoc.op {
             NonassocConnective::Equivalent => {
                 let equiv = self.graph.add_node(NodeType::Equivalent);
                 self.graph.add_edge(equiv, left, ());
                 self.graph.add_edge(equiv, right, ());
-                self.record(equiv);
+                equiv
             }
             NonassocConnective::LRImplies => {
-                let implies = self.graph.add_node(NodeType::Implication);
-                self.graph.add_edge(left, right, ());
-                self.graph.add_edge(implies, left, ());
+                let marker = self.graph.add_node(NodeType::Negation);
+                let implies = self.graph.add_node(NodeType::Or);
+                self.graph.add_edge(marker, left, ());
+                self.graph.add_edge(implies, marker, ());
                 self.graph.add_edge(implies, right, ());
-                self.record(implies);
+                implies
             }
             _ => unimplemented!(),
         }
@@ -248,13 +255,13 @@ impl<'v> Visitor<'v> for GraphBuilder {
         let node = self.graph.add_node(node_type);
         for variable in quantified.bound.0 {
             self.visit_variable(variable);
-            let variable = self.last();
+            let variable = self.last;
             self.graph.add_edge(node, variable, ());
         }
         self.visit_fof_unit_formula(quantified.formula);
-        let formula = self.last();
+        let formula = self.last;
         self.graph.add_edge(node, formula, ());
-        self.record(node);
+        self.last = node;
     }
 }
 
@@ -263,24 +270,32 @@ fn parser(_py: Python, module: &PyModule) -> PyResult<()> {
     type LongTensor = PyArray1<i64>;
 
     #[pyfn(module, "graph")]
-    fn to_graph<'p>(
+    fn graph<'p>(
         py: Python<'p>,
         conjecture: &[u8],
-        axiom: &[u8],
-    ) -> PyResult<(&'p LongTensor, &'p LongTensor, &'p LongTensor)> {
+        premises: Vec<&[u8]>,
+    ) -> PyResult<(
+        &'p LongTensor,
+        &'p LongTensor,
+        &'p LongTensor,
+        &'p LongTensor,
+    )> {
+        let mut premise_indices = vec![];
         let mut builder = GraphBuilder::default();
-        builder.level();
 
-        let (_, axiom) = fof_annotated::<()>(axiom).expect("parse error");
-        builder.visit(axiom, false);
         let (_, conjecture) = fof_annotated::<()>(conjecture).expect("parse error");
         builder.visit(conjecture, true);
+        for premise in premises {
+            let (_, premise) = fof_annotated::<()>(premise).expect("parse error");
+            premise_indices.push(builder.visit(premise, false).index() as i64);
+        }
 
         let (nodes, sources, targets) = builder.finish();
         let nodes = PyArray::from_vec(py, nodes);
         let sources = PyArray::from_vec(py, sources);
         let targets = PyArray::from_vec(py, targets);
-        Ok((nodes, sources, targets))
+        let premise_indices = PyArray::from_vec(py, premise_indices);
+        Ok((nodes, sources, targets, premise_indices))
     }
 
     Ok(())
