@@ -3,9 +3,11 @@ use petgraph::graph::{Graph, NodeIndex};
 use petgraph::Directed;
 use pyo3::prelude::*;
 use std::collections::{BTreeSet, HashMap};
-use tptp::parsers::fof_annotated;
-use tptp::syntax::*;
+use tptp::common::*;
+use tptp::fof;
+use tptp::top::FofAnnotated;
 use tptp::visitor::Visitor;
+use tptp::Parse;
 
 #[derive(Debug, Clone, Copy)]
 enum NodeType {
@@ -42,7 +44,7 @@ struct GraphBuilder {
 impl GraphBuilder {
     fn visit(&mut self, fof: FofAnnotated, conjecture: bool) -> NodeIndex {
         self.variables.clear();
-        self.visit_fof_formula(fof.formula);
+        self.visit_fof_formula(&fof.0.formula);
         let node_type = if conjecture {
             NodeType::Conjecture
         } else {
@@ -73,7 +75,7 @@ impl GraphBuilder {
 }
 
 impl<'v> Visitor<'v> for GraphBuilder {
-    fn visit_variable(&mut self, variable: Variable) {
+    fn visit_variable(&mut self, variable: &Variable) {
         let key = format!("{}", variable);
         let variables = &mut self.variables;
         let graph = &mut self.graph;
@@ -82,7 +84,7 @@ impl<'v> Visitor<'v> for GraphBuilder {
             .or_insert_with(|| graph.add_node(NodeType::Variable));
     }
 
-    fn visit_functor(&mut self, functor: Functor) {
+    fn visit_functor(&mut self, functor: &Functor) {
         let key = format!("{}", functor);
         let functors = &mut self.functors;
         let graph = &mut self.graph;
@@ -91,7 +93,7 @@ impl<'v> Visitor<'v> for GraphBuilder {
             .or_insert_with(|| graph.add_node(NodeType::Functor));
     }
 
-    fn visit_defined_term(&mut self, defined: DefinedTerm) {
+    fn visit_defined_term(&mut self, defined: &DefinedTerm) {
         let key = format!("{}", defined);
         let functors = &mut self.functors;
         let graph = &mut self.graph;
@@ -100,7 +102,7 @@ impl<'v> Visitor<'v> for GraphBuilder {
             .or_insert_with(|| graph.add_node(NodeType::Functor));
     }
 
-    fn visit_fof_defined_plain_formula(&mut self, defined: FofDefinedPlainFormula) {
+    fn visit_fof_defined_plain_formula(&mut self, defined: &fof::DefinedPlainFormula) {
         let value = format!("{}", defined);
         let node_type = if value == "$true" {
             NodeType::True
@@ -112,18 +114,18 @@ impl<'v> Visitor<'v> for GraphBuilder {
         self.last = self.graph.add_node(node_type);
     }
 
-    fn visit_fof_plain_term(&mut self, term: FofPlainTerm) {
-        use FofPlainTerm::*;
+    fn visit_fof_plain_term(&mut self, term: &fof::PlainTerm) {
+        use fof::PlainTerm::*;
         let (functor, arguments) = match term {
-            Constant(constant) => (constant.0, vec![]),
-            Function(functor, arguments) => (functor, arguments.0),
+            Constant(constant) => (&constant.0, &[] as &[fof::Term]),
+            Function(functor, arguments) => (functor, arguments.0.as_slice()),
         };
         self.visit_functor(functor);
         let functor = self.last;
 
         let mut children = vec![];
         for argument in arguments {
-            self.visit_fof_term(argument);
+            self.visit_fof_term(&argument);
             children.push(self.last);
         }
 
@@ -150,10 +152,13 @@ impl<'v> Visitor<'v> for GraphBuilder {
         });
     }
 
-    fn visit_fof_defined_infix_formula(&mut self, defined_infix_formula: FofDefinedInfixFormula) {
-        self.visit_fof_term(defined_infix_formula.left);
+    fn visit_fof_defined_infix_formula(
+        &mut self,
+        defined_infix_formula: &fof::DefinedInfixFormula,
+    ) {
+        self.visit_fof_term(&defined_infix_formula.left);
         let left = self.last;
-        self.visit_fof_term(defined_infix_formula.right);
+        self.visit_fof_term(&defined_infix_formula.right);
         let right = self.last;
 
         self.last = if let Some(node) = self.equalities.get(&(left, right)) {
@@ -168,12 +173,12 @@ impl<'v> Visitor<'v> for GraphBuilder {
         }
     }
 
-    fn visit_fof_unary_formula(&mut self, unary_formula: FofUnaryFormula) {
+    fn visit_fof_unary_formula(&mut self, unary_formula: &fof::UnaryFormula) {
         let formula = match unary_formula {
-            FofUnaryFormula::Unary(_, formula) => formula,
+            fof::UnaryFormula::Unary(_, formula) => formula,
             _ => unimplemented!(),
         };
-        self.visit_fof_unit_formula(formula);
+        self.visit_fof_unit_formula(&formula);
         let formula = self.last;
 
         self.last = if let Some(node) = self.negations.get(&formula) {
@@ -185,9 +190,9 @@ impl<'v> Visitor<'v> for GraphBuilder {
         }
     }
 
-    fn visit_fof_and_formula(&mut self, and_formula: FofAndFormula) {
+    fn visit_fof_and_formula(&mut self, and_formula: &fof::AndFormula) {
         let mut children = BTreeSet::new();
-        for formula in and_formula.0 {
+        for formula in &and_formula.0 {
             self.visit_fof_unit_formula(formula);
             children.insert(self.last);
         }
@@ -203,9 +208,9 @@ impl<'v> Visitor<'v> for GraphBuilder {
         }
     }
 
-    fn visit_fof_or_formula(&mut self, or_formula: FofOrFormula) {
+    fn visit_fof_or_formula(&mut self, or_formula: &fof::OrFormula) {
         let mut children = BTreeSet::new();
-        for formula in or_formula.0 {
+        for formula in &or_formula.0 {
             self.visit_fof_unit_formula(formula);
             children.insert(self.last);
         }
@@ -221,10 +226,10 @@ impl<'v> Visitor<'v> for GraphBuilder {
         }
     }
 
-    fn visit_fof_binary_nonassoc(&mut self, nonassoc: FofBinaryNonassoc) {
-        self.visit_fof_unit_formula(nonassoc.left);
+    fn visit_fof_binary_nonassoc(&mut self, nonassoc: &fof::BinaryNonassoc) {
+        self.visit_fof_unit_formula(&nonassoc.left);
         let left = self.last;
-        self.visit_fof_unit_formula(nonassoc.right);
+        self.visit_fof_unit_formula(&nonassoc.right);
         let right = self.last;
 
         self.last = match nonassoc.op {
@@ -246,19 +251,19 @@ impl<'v> Visitor<'v> for GraphBuilder {
         }
     }
 
-    fn visit_fof_quantified_formula(&mut self, quantified: FofQuantifiedFormula) {
-        let node_type = if quantified.quantifier == FofQuantifier::Forall {
+    fn visit_fof_quantified_formula(&mut self, quantified: &fof::QuantifiedFormula) {
+        let node_type = if quantified.quantifier == fof::Quantifier::Forall {
             NodeType::Forall
         } else {
             NodeType::Exists
         };
         let node = self.graph.add_node(node_type);
-        for variable in quantified.bound.0 {
+        for variable in &quantified.bound.0 {
             self.visit_variable(variable);
             let variable = self.last;
             self.graph.add_edge(node, variable, ());
         }
-        self.visit_fof_unit_formula(quantified.formula);
+        self.visit_fof_unit_formula(&quantified.formula);
         let formula = self.last;
         self.graph.add_edge(node, formula, ());
         self.last = node;
@@ -269,7 +274,7 @@ impl<'v> Visitor<'v> for GraphBuilder {
 fn parser(_py: Python, module: &PyModule) -> PyResult<()> {
     type LongTensor = PyArray1<i64>;
 
-    #[pyfn(module, "graph")]
+    #[pyfn(module)]
     fn graph<'p>(
         py: Python<'p>,
         conjecture: &[u8],
@@ -283,10 +288,12 @@ fn parser(_py: Python, module: &PyModule) -> PyResult<()> {
         let mut premise_indices = vec![];
         let mut builder = GraphBuilder::default();
 
-        let (_, conjecture) = fof_annotated::<()>(conjecture).expect("parse error");
+        let (_, conjecture) =
+            <FofAnnotated as Parse<'_, ()>>::parse(conjecture).expect("parse error");
         builder.visit(conjecture, true);
         for premise in premises {
-            let (_, premise) = fof_annotated::<()>(premise).expect("parse error");
+            let (_, premise) =
+                <FofAnnotated as Parse<'_, ()>>::parse(premise).expect("parse error");
             premise_indices.push(builder.visit(premise, false).index() as i64);
         }
 

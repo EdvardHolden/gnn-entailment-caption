@@ -9,13 +9,12 @@ name = "parser"
 crate-type = ["cdylib"]
 
 [dependencies]
-nom = "5"
-numpy = "0.8"
-petgraph = "0.5"
-tptp = "0.22"
+numpy = "0.15"
+petgraph = "0.6"
+tptp = "0.30"
 
 [dependencies.pyo3]
-version = "0.9"
+version = "0.15"
 features = ["extension-module"]
 
 [profile.release]
