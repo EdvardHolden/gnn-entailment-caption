@@ -42,6 +42,24 @@ struct GraphBuilder {
 }
 
 impl GraphBuilder {
+    fn equality(&mut self, left: &fof::Term, right: &fof::Term) {
+        self.visit_fof_term(left);
+        let left = self.last;
+        self.visit_fof_term(right);
+        let right = self.last;
+
+        self.last = if let Some(node) = self.equalities.get(&(left, right)) {
+            *node
+        } else {
+            let equality = self.graph.add_node(NodeType::Equality);
+            self.graph.add_edge(equality, left, ());
+            self.graph.add_edge(equality, right, ());
+            self.equalities.insert((left, right), equality);
+            self.equalities.insert((right, left), equality);
+            equality
+        }
+    }
+
     fn visit(&mut self, fof: FofAnnotated, conjecture: bool) -> NodeIndex {
         self.variables.clear();
         self.visit_fof_formula(&fof.0.formula);
@@ -125,7 +143,7 @@ impl<'v> Visitor<'v> for GraphBuilder {
 
         let mut children = vec![];
         for argument in arguments {
-            self.visit_fof_term(&argument);
+            self.visit_fof_term(argument);
             children.push(self.last);
         }
 
@@ -156,29 +174,18 @@ impl<'v> Visitor<'v> for GraphBuilder {
         &mut self,
         defined_infix_formula: &fof::DefinedInfixFormula,
     ) {
-        self.visit_fof_term(&defined_infix_formula.left);
-        let left = self.last;
-        self.visit_fof_term(&defined_infix_formula.right);
-        let right = self.last;
-
-        self.last = if let Some(node) = self.equalities.get(&(left, right)) {
-            *node
-        } else {
-            let equality = self.graph.add_node(NodeType::Equality);
-            self.graph.add_edge(equality, left, ());
-            self.graph.add_edge(equality, right, ());
-            self.equalities.insert((left, right), equality);
-            self.equalities.insert((right, left), equality);
-            equality
-        }
+        self.equality(&defined_infix_formula.left, &defined_infix_formula.right);
     }
 
     fn visit_fof_unary_formula(&mut self, unary_formula: &fof::UnaryFormula) {
-        let formula = match unary_formula {
-            fof::UnaryFormula::Unary(_, formula) => formula,
-            _ => unimplemented!(),
+        match unary_formula {
+            fof::UnaryFormula::Unary(_, formula) => {
+                self.visit_fof_unit_formula(formula);
+            }
+            fof::UnaryFormula::InfixUnary(formula) => {
+                self.equality(&formula.left, &formula.right);
+            }
         };
-        self.visit_fof_unit_formula(&formula);
         let formula = self.last;
 
         self.last = if let Some(node) = self.negations.get(&formula) {
