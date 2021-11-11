@@ -8,12 +8,14 @@ from tqdm import tqdm
 from common import mk_loader
 from model import Model
 
+import config
+
 def accuracy(model, data):
     total = 0
     correct = 0
     with torch.no_grad():
         for batch in tqdm(data):
-            batch = batch.to('cuda')
+            batch = batch.to(config.device)
             actual = batch.y
             predicted = torch.sigmoid(model(batch)).round().long()
             correct += actual.eq(predicted).sum().item()
@@ -24,7 +26,7 @@ def accuracy(model, data):
 
 def eval():
     test = mk_loader(Path(__file__).parent, 'test.txt')
-    model = Model(17).to('cuda')
+    model = Model(17).to(config.device)
     model.load_state_dict(torch.load('model.pt'))
     model.eval()
 

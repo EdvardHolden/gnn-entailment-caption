@@ -10,8 +10,10 @@ from common import mk_loader
 from model import Model
 from statistics import Writer
 
+import config
+
 def batch_loss(model, batch):
-    batch = batch.to('cuda')
+    batch = batch.to(config.device)
     y = model(batch)
     loss = binary_cross_entropy_with_logits(y, batch.y)
     del batch
@@ -30,7 +32,7 @@ def train():
     train = mk_loader(Path(__file__).parent, 'train.txt')
     validation = mk_loader(Path(__file__).parent, 'validation.txt')
 
-    model = Model(17).to('cuda')
+    model = Model(17).to(config.device)
     optimizer = SGD(
         model.parameters(),
         lr=0.1,

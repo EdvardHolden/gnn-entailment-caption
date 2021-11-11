@@ -73,13 +73,25 @@ class Model(Module):
         self.output = FullyConnectedLayer(2 * (LAYERS + 1) * K, 1)
 
     def forward(self, input_batch):
+        print(input_batch)
         x = input_batch.x
         edge_index = input_batch.edge_index
         premise_index = input_batch.premise_index
         batch = input_batch.batch
+
+        # TODO why is global pool not used???
 
         x = self.input(x)
         x = self.dense(x, edge_index)
         x = x[premise_index]
         x = self.output(x).squeeze(-1)
         return x
+
+
+if __name__ == "__main__":
+    from torchinfo import summary
+    model = Model(17)
+    summary(model)
+    print()
+    print()
+    print(model)

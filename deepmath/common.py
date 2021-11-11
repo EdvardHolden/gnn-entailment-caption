@@ -5,13 +5,13 @@ from dataset import DeepMathDataset
 
 BATCH_SIZE = 64
 
-def mk_loader(root, name, **kwargs):
+def mk_loader(root, name, batch_size=BATCH_SIZE, shuffle=True, **kwargs):
     dataset = DeepMathDataset(root, name=name)
     return DataLoader(
         dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         collate_fn=Batch.from_data_list,
-        shuffle=True,
+        shuffle=shuffle,
         pin_memory=True,
         num_workers=8,
         **kwargs
