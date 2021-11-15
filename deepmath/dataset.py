@@ -10,6 +10,20 @@ from parser import graph
 CLAUSE_PATTERN = b'((cnf|fof|tff)\\((.*\n)*?.*\\)\\.$)'
 
 
+def construct_graph(conjecture, premises):
+    nodes, sources, targets, premise_indices, conjecture_indices = graph(
+        conjecture,
+        premises
+    )
+    x = torch.tensor(nodes)
+    edge_index = torch.tensor([sources, targets])
+    premise_index = torch.tensor(premise_indices)
+    conjecture_index = torch.tensor(conjecture_indices)
+
+    data = Data(x=x, edge_index=edge_index, premise_index=premise_index, conjecture_index=conjecture_index)
+    return data
+
+
 class DeepMathDataset(InMemoryDataset):
     def __init__(self, root, name, transform=None, pre_transform=None):
         self.root = root
@@ -26,22 +40,10 @@ class DeepMathDataset(InMemoryDataset):
         stem = Path(self.name).stem
         return [f'{stem}.pt']
 
-    def _construct_graph(self, conjecture, premises):
-        nodes, sources, targets, premise_indices = graph(
-            conjecture,
-            premises
-        )
-        x = torch.tensor(nodes)
-        edge_index = torch.tensor([sources, targets])
-        premise_index = torch.tensor(premise_indices)
-
-        data = Data(x=x, edge_index=edge_index, premise_index=premise_index)
-        return data
-
     def read_problem_deepmath(self, problem):
         path = Path(self.root) / 'nndata' / problem.strip()
         with open(path, 'rb') as f:
-            conjecture = next(f).strip()[2:]
+            conjecture = list(next(f).strip()[2:])
 
             premises, target = zip(*[(
                 line[2:],
@@ -49,7 +51,7 @@ class DeepMathDataset(InMemoryDataset):
             ) for line in f])
 
         # Construct the data point
-        data = self._construct_graph(conjecture, premises)
+        data = construct_graph(conjecture, premises)
         # Add problem name
         data.name = problem.strip()
         # Add targets
@@ -60,14 +62,11 @@ class DeepMathDataset(InMemoryDataset):
         data_list = []
         with open(self.raw_paths[0], 'r') as problems:
             for problem in tqdm(problems):
-                # Load axiom_caption datasets differently than deepmath
                 data_list.append(self.read_problem_deepmath(problem))
         data, slices = self.collate(data_list)
         out = Path(self.processed_dir) / self.processed_file_names[0]
         torch.save((data, slices), out)
 
-
-# ##################################################################################################33
 
 class LTBDataset(Dataset):
 
@@ -99,25 +98,11 @@ class LTBDataset(Dataset):
         data = torch.load(os.path.join(self.processed_dir, idx.split('.')[0] + '.pt'))
         return data
 
-    def _construct_graph(self, conjecture, premises):
-        nodes, sources, targets, premise_indices = graph(
-            conjecture,
-            premises
-        )
-        x = torch.tensor(nodes)
-        edge_index = torch.tensor([sources, targets])
-        premise_index = torch.tensor(premise_indices)
-
-        data = Data(x=x, edge_index=edge_index, premise_index=premise_index)
-        return data
-
     def _get_clauses(self, problem_dir, problem):
         # Read the problem file
         path = os.path.join(problem_dir, problem.strip())
         with open(path, 'rb') as f:
             text = f.read()
-
-        print(problem)
 
         # Extract all axioms and extract the axiom group
         res = re.findall(CLAUSE_PATTERN, text, re.MULTILINE)
@@ -131,20 +116,19 @@ class LTBDataset(Dataset):
         return res
 
     def _split_clauses(self, clauses):
-        # TODO need to split it and extract properly!
         # Filter all types from tff!
         axioms = []
-        conjecture = None  # TODO convert to list
+        conjecture = []
 
         for clause in clauses:
             if b'conjecture' in clause:
-                conjecture = clause
+                conjecture += [clause]
             elif b'type' in clause:
                 pass  # We discard tff types
             else:
                 axioms += [clause]
 
-        return conjecture, tuple(axioms)
+        return conjecture, axioms
 
     def read_problem_tptp(self, problem, problem_dir):
 
@@ -152,11 +136,10 @@ class LTBDataset(Dataset):
         clauses = self._get_clauses(problem_dir, problem)
 
         # Set first axiom to be the conjecture
-        # TODO convert to multiple conjectures later!
         conjecture, axioms = self._split_clauses(clauses)
 
         # Construct the data point
-        data = self._construct_graph(conjecture, axioms)
+        data = construct_graph(conjecture, axioms)
 
         # Add problem name
         data.name = problem.strip()
@@ -175,6 +158,7 @@ class LTBDataset(Dataset):
 
 if __name__ == '__main__':
 
+    # TODO clean up this mess!
     """
     print(Path(__file__).parent)
     print("# Validation")
@@ -190,30 +174,15 @@ if __name__ == '__main__':
     print(train)
     """
 
-    #d = LTBDataset(Path(__file__).parent, 'axiom_caption_test.txt', caption='/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/')
-    #d = LTBDataset(Path(__file__).parent, 'jjt_sine_1_0.txt', caption='/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/')
 
-    d = LTBDataset(
-        'graph_data',
-        'axiom_caption_test.txt',
-        caption='/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/')
-    print(d)
-    print()
+    #d = LTBDataset( 'graph_data', 'axiom_caption_test.txt', caption='/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/')
     #d = LTBDataset(Path(__file__).parent, 'jjt_fof_sine_1_0.txt', caption='/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/')
     d = LTBDataset(
         'graph_data',
         'jjt_fof_sine_1_0.txt',
         caption='/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/')
-    print(d.processed_dir)
-    print(d.root)
-    # print(d.get('JJT00001+1'))
+    #print(d.get('JJT00001+1'))
 
-    #d = LTBDataset(Path(__file__).parent, 'axiom_caption_test.txt', caption='/home/eholden/JJTProblemFiles/')
-
-    #d = LTBDataset(Path(__file__).parent, 'jjt_fof.txt', caption='/home/eholden/JJTProblemFiles/')
-    #d = LTBDataset(Path(__file__).parent, 'jjt_fof_half.txt', caption='/home/eholden/JJTProblemFiles/')
-    #d = DeepMathDataset(Path(__file__).parent, 'jjt_fof_other.txt', caption='/home/eholden/JJTProblemFiles/')
-    #d = DeepMathDataset(Path(__file__).parent, 'axiom_test.txt', caption='/home/eholden/gnn-entailment-caption/deepmath/nndata/')
     print(d)
     # print(d.raw_file_names)
     # print(d.processed_file_names)
