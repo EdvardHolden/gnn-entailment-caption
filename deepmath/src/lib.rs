@@ -284,20 +284,26 @@ fn parser(_py: Python, module: &PyModule) -> PyResult<()> {
     #[pyfn(module)]
     fn graph<'p>(
         py: Python<'p>,
-        conjecture: &[u8],
+        conjectures: Vec<&[u8]>,
         premises: Vec<&[u8]>,
     ) -> PyResult<(
         &'p LongTensor,
         &'p LongTensor,
         &'p LongTensor,
         &'p LongTensor,
+        &'p LongTensor,
     )> {
+
         let mut premise_indices = vec![];
+        let mut conjecture_indices = vec![];
         let mut builder = GraphBuilder::default();
 
-        let (_, conjecture) =
-            <FofAnnotated as Parse<'_, ()>>::parse(conjecture).expect("parse error");
-        builder.visit(conjecture, true);
+        for conjecture in conjectures {
+            let (_, conjecture) =
+                <FofAnnotated as Parse<'_, ()>>::parse(conjecture).expect("parse error");
+            conjecture_indices.push(builder.visit(conjecture, true).index() as i64);
+        }
+
         for premise in premises {
             let (_, premise) =
                 <FofAnnotated as Parse<'_, ()>>::parse(premise).expect("parse error");
@@ -309,7 +315,8 @@ fn parser(_py: Python, module: &PyModule) -> PyResult<()> {
         let sources = PyArray::from_vec(py, sources);
         let targets = PyArray::from_vec(py, targets);
         let premise_indices = PyArray::from_vec(py, premise_indices);
-        Ok((nodes, sources, targets, premise_indices))
+        let conjecture_indices = PyArray::from_vec(py, conjecture_indices);
+        Ok((nodes, sources, targets, premise_indices, conjecture_indices))
     }
 
     Ok(())
