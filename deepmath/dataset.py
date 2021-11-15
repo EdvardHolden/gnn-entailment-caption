@@ -70,7 +70,7 @@ class DeepMathDataset(InMemoryDataset):
 
 class LTBDataset(Dataset):
 
-    def __init__(self, root, name, caption, transform=None, pre_transform=None):
+    def __init__(self, root, name, caption=None, transform=None, pre_transform=None):
 
         root = os.path.join(root, name.split('.')[0])  # Make a separate folder for this data
         self.root = root
@@ -94,8 +94,12 @@ class LTBDataset(Dataset):
     def len(self):
         return len(self.processed_file_names)
 
+    # Need to overwrite this function to operate on the problem names
+    def indices(self):
+        return self.processed_file_names
+
     def get(self, idx):
-        data = torch.load(os.path.join(self.processed_dir, idx.split('.')[0] + '.pt'))
+        data = torch.load(os.path.join(self.processed_dir, idx)) # The ids are now the processed names
         return data
 
     def _get_clauses(self, problem_dir, problem):

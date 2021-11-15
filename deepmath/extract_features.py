@@ -3,7 +3,7 @@ from tqdm import tqdm
 from pickle import dump
 from pathlib import Path
 
-from common import mk_loader
+from common import mk_loader_ltb
 from model import Model
 import config
 
@@ -18,10 +18,14 @@ def get_activation(name):
 
 
 def encode(model, data):
+    model.eval() # Trick to make sure the batchnormalisation does not mess up
+
     embeddings = {}
     with torch.no_grad():
         for batch in tqdm(data):
             batch = batch.to(config.device)
+            if batch.name[0] == "JJT00107+1.p":
+                print(batch.x)
             _ = model(batch)
 
             # Get output of dense layer
@@ -42,7 +46,9 @@ def main():
 
     # Get set of problems
     #data = mk_loader(Path(__file__).parent, 'validation.txt', batch_size=1, shuffle=False)
-    data = mk_loader(Path(__file__).parent, 'example.txt', batch_size=1, shuffle=False)
+    #data = mk_loader(Path(__file__).parent, 'example.txt', batch_size=1, shuffle=False)
+    #data = mk_loader_ltb('graph_data', 'axiom_caption_test.txt', batch_size=1, shuffle=False)
+    data = mk_loader_ltb('graph_data', 'jjt_fof_sine_1_0.txt', batch_size=1, shuffle=False)
 
     # Load the model
     model = Model(17).to(config.device)
@@ -54,7 +60,6 @@ def main():
     # Compute model embeddings
     print("Computing problem embeddings")
     embeddings = encode(model, data)
-    #print(embeddings)
 
     # Save to path
     dump(embeddings, open('graph_features.pkl', 'wb'))

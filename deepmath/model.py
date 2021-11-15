@@ -73,7 +73,6 @@ class Model(Module):
         self.output = FullyConnectedLayer(2 * (LAYERS + 1) * K, 1)
 
     def forward(self, input_batch):
-        print(input_batch)
         x = input_batch.x
         edge_index = input_batch.edge_index
         premise_index = input_batch.premise_index
