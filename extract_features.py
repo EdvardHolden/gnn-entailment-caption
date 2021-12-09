@@ -1,24 +1,61 @@
 import torch
 from tqdm import tqdm
 from pickle import dump
+import os
 from pathlib import Path
+from sklearn.metrics import pairwise_distances
+import numpy as np
+import argparse
 
-from common import mk_loader_ltb
 from model import Model
+from common import mk_loader_ltb
 import config
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--nodes",
+    default="all",
+    choices=["all", "conjecture", "premise"],
+    help="The type of nodes to use in the final embedding",
+)
+parser.add_argument("--model_path", default="model.pt", help="Path to the model used for embedding")
+parser.add_argument("--id_file", default="jjt_fof_sine_1_0.txt", help="Name of the ID file found in raw/")
+parser.add_argument(
+    "--print_distances",
+    action="store_true",
+    default=False,
+    help="Prints the euclidean and cosine distance matrix for the computed embedding vectors",
+)
 
 # Create hooks
 activation = {}
 
 
+def print_embedding_distances(embeddings):
+    feat = []
+    for key in sorted(embeddings.keys()):
+        feat.append(embeddings[key])
+
+    np.set_printoptions(precision=3)
+    np.set_printoptions(suppress=True)
+
+    print("# Euclidean distances")
+    print(pairwise_distances(feat, metric="euclidean"))
+    print()
+    print("# Cosine distances ")
+    print(pairwise_distances(feat, metric="cosine"))
+    print()
+
+
 def get_activation(name):
     def hook(model, input, output):
         activation[name] = output.detach()
+
     return hook
 
 
-def encode(model, data):
-    model.eval() # Trick to make sure the batchnormalisation does not mess up
+def encode(model, data, nodes=None):
+    model.eval()  # Trick to make sure the batchnormalisation does not mess up
 
     embeddings = {}
     with torch.no_grad():
@@ -29,7 +66,15 @@ def encode(model, data):
             _ = model(batch)
 
             # Get output of dense layer
-            emb = activation['dense']
+            emb = activation["dense"]
+
+            if nodes == "premise":
+                # Extract the premise nodes
+                emb = emb[batch.premise_index]
+            elif nodes == "conjecture":
+                emb = emb[batch.conjecture_index]
+            elif nodes is None or nodes == "all":
+                pass
 
             # Get the mean of the graph (might change to node/conj indecies?)
             e = torch.mean(emb, 0)
@@ -44,46 +89,32 @@ def encode(model, data):
 
 def main():
 
+    args = parser.parse_args()
+
     # Get set of problems
-    #data = mk_loader(Path(__file__).parent, 'validation.txt', batch_size=1, shuffle=False)
-    #data = mk_loader(Path(__file__).parent, 'example.txt', batch_size=1, shuffle=False)
-    #data = mk_loader_ltb('graph_data', 'axiom_caption_test.txt', batch_size=1, shuffle=False)
-    data = mk_loader_ltb('graph_data', 'jjt_fof_sine_1_0.txt', batch_size=1, shuffle=False)
+    data = mk_loader_ltb("graph_data", args.id_file, batch_size=1, shuffle=False)
+    print("Number of problems: ", len(data))
 
     # Load the model
     model = Model(17).to(config.device)
-    model.load_state_dict(torch.load('model.pt'))
-
+    model.load_state_dict(torch.load(args.model_path))
     # Create hook for getting the intermediate output
-    model.dense.register_forward_hook(get_activation('dense'))
+    model.dense.register_forward_hook(get_activation("dense"))
 
     # Compute model embeddings
     print("Computing problem embeddings")
-    embeddings = encode(model, data)
+    embeddings = encode(model, data, nodes=args.nodes)
 
     # Save to path
-    dump(embeddings, open('graph_features.pkl', 'wb'))
 
-    from scipy.spatial.distance import euclidean, cosine
-    from sklearn.metrics import pairwise_distances
+    res_path = os.path.join('embeddings', "graph_features_" + Path(args.id_file).stem + "_" + args.nodes + '.pkl')
+    dump(embeddings, open(res_path, "wb"))
 
     # Make feature matrix
-    feat = []
-    for key in sorted(embeddings.keys()):
-        feat.append(embeddings[key])
+    if args.print_distances:
+        print_embedding_distances(embeddings)
 
-    import numpy as np
-    np.set_printoptions(precision=3)
-    np.set_printoptions(suppress=True)
-
-    print("# Euclidean distances")
-    print(pairwise_distances(feat, metric='euclidean'))
-    print()
-    print("# Cosine distances ")
-    print(pairwise_distances(feat, metric='cosine'))
-    print()
 
 if __name__ == "__main__":
-    # For the proof of concept, we only extract features from train.txt
     torch.manual_seed(0)
     main()
