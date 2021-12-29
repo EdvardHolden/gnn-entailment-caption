@@ -30,6 +30,10 @@ def compute_graph(problem, dir):
     # Parse the graph
     nodes, sources, targets, premise_indices, conjecture_indices = graph(conjecture, premises)
 
+    # If the problem contains no axioms or no conjecture we do not bother
+    if len(premise_indices) == 0 or len(conjecture_indices) == 0:
+        return None
+
     # Need to convert the data into dataframes
     x = pd.DataFrame({"x": nodes})
     edges = pd.DataFrame({"source": sources, "target": targets})
@@ -40,9 +44,6 @@ def compute_graph(problem, dir):
     # Add the indices information
     st.premise_indices = premise_indices
     st.conjecture_indices = conjecture_indices
-    #print(premise_indices)
-    #print(conjecture_indices)
-    #sys.exit(0)
 
     return st
 
@@ -66,12 +67,18 @@ def graph_distance(graphs):
 
 def get_graph_dataset(id_file, problem_dir):
     # Get the graph data
-    problems = get_problem_ids(id_file)[0:200]  # FIXME TODO
+    problems = get_problem_ids(id_file)
     graphs = []
     print("# Processing problems")
     for prob in tqdm(problems):
         g = compute_graph(prob, problem_dir)
-        graphs += [g]
+        # Only add graphs
+        if g is not None:
+            graphs += [g]
+        else:
+            # The graph was None so removing the problem name from the list
+            problems.remove(prob)
+            print(f"Removed problem {prob}")
 
     # Graph summary
     print(f"Number of graphs: {len(graphs)}")
@@ -137,44 +144,49 @@ def prune_graph(graph, new_index):
 
     # Only keep edges in the new subset (offset of 1)
     edges = [(s - 1, t - 1) for s, t in graph.edges() if s - 1 in new_index and t - 1 in new_index]
-    print("new_index: ", new_index)
 
-    x = pd.DataFrame(node_features)
+    x = pd.DataFrame(node_features, index=new_index)
     edges = pd.DataFrame(edges, columns=["source", "target"])
 
     new_graph = StellarGraph(x, edges=edges)
-    print("$$")
-    print(edges)
 
     return new_graph
 
 
 def main(id_file, problem_dir):
 
-    # TODO remember to save the model!
-
     graphs, problems = get_graph_dataset(id_file, problem_dir)
 
-    '''
+    """
     # Train unsupervised embedding model (this takes ages)
     embedding_model, generator = create_embedding_model(graphs)
 
     # Save the embedding model
     embedding_model.save('embedding_model_save')
-    #'''
-    embedding_model = keras.models.load_model('embedding_model_save')
+    #"""
+    embedding_model = keras.models.load_model("embedding_model_save")
     generator = sg.mapper.PaddedGraphGenerator(graphs)
     print(embedding_model)
 
     # Embed the problems
-    """
     print("# Embedding problem")
     embed_graphs("embedding_unsupervised_problem", embedding_model, generator, problems, graphs)
     print("# Embedding conjecture")
-    embed_graphs("embedding_unsupervised_conjecture", embedding_model, generator, problems, [prune_graph(g, g.conjecture_indices) for g in graphs])
-    """
+    embed_graphs(
+        "embedding_unsupervised_conjecture",
+        embedding_model,
+        generator,
+        problems,
+        [prune_graph(g, g.conjecture_indices) for g in graphs],
+    )
     print("# Embedding premises")
-    embed_graphs("embedding_unsupervised_premises", embedding_model, generator, problems, [prune_graph(g, g.premise_indices) for g in graphs])
+    embed_graphs(
+        "embedding_unsupervised_premises",
+        embedding_model,
+        generator,
+        problems,
+        [prune_graph(g, g.premise_indices) for g in graphs],
+    )
 
 
 def run_main():
