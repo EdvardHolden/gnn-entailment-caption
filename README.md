@@ -2,6 +2,9 @@
 
 This is a work in progress.
 
+To run: 
+export CUDA_VISIBLE_DEVICES=""
+
 ## Pre-train model
 To train the initial model on the deepmath dataset run `python3 train.py`
 
