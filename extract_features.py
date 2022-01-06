@@ -8,7 +8,7 @@ import numpy as np
 import argparse
 
 from model import Model
-from common import mk_loader_ltb
+from common import mk_loader_ltb, mk_loader
 import config
 
 parser = argparse.ArgumentParser()
@@ -25,6 +25,9 @@ parser.add_argument(
     action="store_true",
     default=False,
     help="Prints the euclidean and cosine distance matrix for the computed embedding vectors",
+)
+parser.add_argument(
+    "--library", choices=["tptp", "deepmath"], help="Whether parsing TPTP or Deepmath style problems"
 )
 
 # Create hooks
@@ -92,7 +95,12 @@ def main():
     args = parser.parse_args()
 
     # Get set of problems
-    data = mk_loader_ltb("graph_data", args.id_file, batch_size=1, shuffle=False)
+    if args.library == "tptp":
+        data = mk_loader_ltb("graph_data", args.id_file, batch_size=1, shuffle=False)
+    else:
+        # data = mk_loader("graph_data", args.id_file, batch_size=1, shuffle=False)
+        data = mk_loader(Path(__file__).parent, args.id_file, batch_size=1, shuffle=False)
+
     print("Number of problems: ", len(data))
 
     # Load the model
@@ -107,7 +115,9 @@ def main():
 
     # Save to path
 
-    res_path = os.path.join('embeddings', "graph_features_" + Path(args.id_file).stem + "_" + args.nodes + '.pkl')
+    res_path = os.path.join(
+        "embeddings", "graph_features_" + Path(args.id_file).stem + "_" + args.nodes + ".pkl"
+    )
     dump(embeddings, open(res_path, "wb"))
 
     # Make feature matrix

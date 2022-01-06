@@ -5,6 +5,11 @@ import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
 from tensorflow import keras
+
+physical_devices = tf.config.list_physical_devices("GPU")
+for device in physical_devices:
+    tf.config.experimental.set_memory_growth(device, True)
+
 import stellargraph as sg
 from stellargraph import StellarGraph, StellarDiGraph
 import networkx as nx
@@ -14,18 +19,24 @@ import sys
 import pandas as pd
 
 from parser import graph
-from dataset import read_problem_tptp
+from utils import read_problem_tptp, read_problem_deepmath
 
+IDX_FILE = "graph_idx.pkl"
+GRAPH_TARGET_FILE = "graph_target.pkl"
 
 # TODO Undirected or directed?
-EPOCHS = 10
-NO_TRAINING_SAMPLES = 5
+EPOCHS = 200
+NO_TRAINING_SAMPLES = 6000
+# EPOCHS = 10
+# NO_TRAINING_SAMPLES = 10
 
 
-def compute_graph(problem, dir):
+def compute_graph(problem, problem_dir):
 
+    # FIXME
     # Read problem and get the problem axioms/conjectures
-    conjecture, premises = read_problem_tptp(problem, dir)
+    # conjecture, premises = read_problem_tptp(problem, dir)
+    conjecture, premises, _ = read_problem_deepmath(problem, problem_dir)
 
     # Parse the graph
     nodes, sources, targets, premise_indices, conjecture_indices = graph(conjecture, premises)
@@ -105,6 +116,11 @@ def create_embedding_model(graphs):
     pair_model = keras.Model(inp1 + inp2, vec_distance)
     embedding_model = keras.Model(inp1, out1)
 
+    return embedding_model, pair_model, generator
+
+
+def compute_dataset(graphs):
+
     # Make synthetic dataset
     print("Making dataset")
     graph_idx = np.random.RandomState(0).randint(len(graphs), size=(NO_TRAINING_SAMPLES, 2))
@@ -114,6 +130,14 @@ def create_embedding_model(graphs):
         graph_distance, ((graphs[left], graphs[right]) for left, right in graph_idx), max_workers=5
     )
 
+    # Save the dataset
+    save_dataset(graph_idx, targets)
+
+    return graph_idx, targets
+
+
+def train_pair_model(pair_model, generator, graph_idx, targets):
+
     train_gen = generator.flow(graph_idx, batch_size=10, targets=targets)
 
     # Train the model
@@ -121,7 +145,6 @@ def create_embedding_model(graphs):
     pair_model.compile(keras.optimizers.Adam(1e-2), loss="mse")
     history = pair_model.fit(train_gen, epochs=EPOCHS, verbose=1)
     sg.utils.plot_history(history)
-    return embedding_model, generator
 
 
 def embed_graphs(file_name, embedding_model, generator, problems, graphs):
@@ -153,19 +176,46 @@ def prune_graph(graph, new_index):
     return new_graph
 
 
+def load_dataset():
+    with open(IDX_FILE, "rb") as f:
+        idx = pickle.load(f)
+    with open(GRAPH_TARGET_FILE, "rb") as f:
+        targets = pickle.load(f)
+
+    return idx, targets
+
+
+def save_dataset(idx, targets):
+
+    with open(IDX_FILE, "wb") as f:
+        pickle.dump(idx, f)
+    with open(GRAPH_TARGET_FILE, "wb") as f:
+        pickle.dump(targets, f)
+
+
 def main(id_file, problem_dir):
 
     graphs, problems = get_graph_dataset(id_file, problem_dir)
 
-    """
-    # Train unsupervised embedding model (this takes ages)
-    embedding_model, generator = create_embedding_model(graphs)
+    # Create the models and dta generator
+    embedding_model, pair_model, generator = create_embedding_model(graphs)
+
+    # Compute dataset
+    if os.path.exists(IDX_FILE) and os.path.exists(GRAPH_TARGET_FILE):
+        print("# Loading existing dataset")
+        graph_idx, targets = load_dataset()
+    else:
+        graph_idx, targets = compute_dataset(graphs)
+
+    # Train the pair model
+    train_pair_model(pair_model, generator, graph_idx, targets)
 
     # Save the embedding model
-    embedding_model.save('embedding_model_save')
-    #"""
-    embedding_model = keras.models.load_model("embedding_model_save")
-    generator = sg.mapper.PaddedGraphGenerator(graphs)
+    embedding_model.save("embedding_model_save")
+    # """
+    # embedding_model = keras.models.load_model("embedding_model_save")
+    # generator = sg.mapper.PaddedGraphGenerator(graphs)
+
     print(embedding_model)
 
     # Embed the problems
@@ -190,13 +240,15 @@ def main(id_file, problem_dir):
 
 
 def run_main():
-    physical_devices = tf.config.list_physical_devices("GPU")
-    for device in physical_devices:
-        tf.config.experimental.set_memory_growth(device, True)
 
-    problem_dir = "/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/"
-    id_file = "axiom_caption_test.txt"
-    id_file = "jjt_fof_sine_1_0.txt"
+    # problem_dir = "/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/"
+    # id_file = "axiom_caption_test.txt"
+    # id_file = "jjt_fof_sine_1_0.txt"
+
+    problem_dir = "/home/eholden/gnn-entailment-caption/"
+    id_file = "deepmath.txt"
+    # id_file = "validation.txt"
+    # id_file = "train.txt"
 
     main(id_file, problem_dir)
 

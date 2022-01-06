@@ -2,12 +2,10 @@ from pathlib import Path
 import torch
 from torch_geometric.data import Data, InMemoryDataset, Dataset
 from tqdm import tqdm
-import re
 import os
 
 from parser import graph
-
-CLAUSE_PATTERN = b"((cnf|fof|tff)\\((.*\n)*?.*\\)\\.$)"
+from utils import read_problem_deepmath, read_problem_tptp
 
 
 def construct_graph(conjecture, premises):
@@ -17,13 +15,7 @@ def construct_graph(conjecture, premises):
     premise_index = torch.tensor(premise_indices)
     conjecture_index = torch.tensor(conjecture_indices)
 
-    for n in nodes:
-        print(n)
-    print(len(x))
-    print(set(nodes))
-
     data = Data(x=x, edge_index=edge_index, premise_index=premise_index, conjecture_index=conjecture_index)
-    print(data)
     return data
 
 
@@ -43,34 +35,20 @@ class DeepMathDataset(InMemoryDataset):
         stem = Path(self.name).stem
         return [f"{stem}.pt"]
 
-    def read_problem_deepmath(self, problem):
-        path = Path(self.root) / "nndata" / problem.strip()
-        with open(path, "rb") as f:
-            conjecture = list(next(f).strip()[2:])
-
-            premises, target = zip(
-                *[
-                    (
-                        line[2:],
-                        1.0 if line.startswith(b"+") else 0.0,
-                    )
-                    for line in f
-                ]
-            )
-
-        # Construct the data point
-        data = construct_graph(conjecture, premises)
-        # Add problem name
-        data.name = problem.strip()
-        # Add targets
-        data.y = torch.tensor(target)
-        return data
-
     def process(self):
         data_list = []
         with open(self.raw_paths[0], "r") as problems:
             for problem in tqdm(problems):
-                data_list.append(self.read_problem_deepmath(problem))
+                # Extract info from the problem
+                conjecture, premises, target = read_problem_deepmath(problem, self.root)
+                # Construct the data point
+                data = construct_graph([conjecture], premises)
+                # Add problem name
+                data.name = problem.strip()
+                # Add targets
+                data.y = torch.tensor(target)
+                # Append the final datapoint to the data list
+                data_list.append(data)
         data, slices = self.collate(data_list)
         out = Path(self.processed_dir) / self.processed_file_names[0]
         torch.save((data, slices), out)
@@ -113,7 +91,7 @@ class LTBDataset(Dataset):
 
         for problem in tqdm(self.problems):
             # Read the problem caption
-            conjecture, axioms = self.read_problem_tptp(problem, self.caption)
+            conjecture, axioms = read_problem_tptp(problem, self.caption)
             # Construct the data point
             data = construct_graph(conjecture, axioms)
             # Add problem name
@@ -122,51 +100,6 @@ class LTBDataset(Dataset):
             # Save the data instance
             save_path = os.path.join(self.processed_dir, problem.split(".")[0] + ".pt")
             torch.save(data, save_path)
-
-
-def _split_clauses(clauses):
-    # Filter all types from tff!
-    axioms = []
-    conjecture = []
-
-    for clause in clauses:
-        if b"conjecture" in clause:
-            conjecture += [clause]
-        elif b"type" in clause:
-            pass  # We discard tff types
-        else:
-            axioms += [clause]
-
-    return conjecture, axioms
-
-
-def _get_clauses(problem_dir, problem):
-    # Read the problem file
-    path = os.path.join(problem_dir, problem.strip())
-    with open(path, "rb") as f:
-        text = f.read()
-
-    # Extract all axioms and extract the axiom group
-    res = re.findall(CLAUSE_PATTERN, text, re.MULTILINE)
-    res = [r[0] for r in res]
-
-    # Convert all cnf, tff clauses to fof (will remove type information later)
-    for n in range(len(res)):
-        res[n] = res[n].replace(b"cnf(", b"fof(")
-        res[n] = res[n].replace(b"tff(", b"fof(")
-
-    return res
-
-
-def read_problem_tptp(problem, problem_dir):
-
-    # Extract the clauses from the problem
-    clauses = _get_clauses(problem_dir, problem)
-
-    # Set first axiom to be the conjecture
-    conjecture, axioms = _split_clauses(clauses)
-
-    return conjecture, axioms
 
 
 if __name__ == "__main__":
