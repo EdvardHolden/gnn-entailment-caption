@@ -84,7 +84,7 @@ def encode(model, data, nodes=None):
             e = e.detach().numpy()
 
             # Batch size is 1 for this setup
-            embeddings[batch.name[0]] = e
+            embeddings[batch.name[0].strip()] = e
             del batch
 
     return embeddings
