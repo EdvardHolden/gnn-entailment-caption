@@ -1,6 +1,7 @@
 import os
 import pickle
 
+
 import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
@@ -12,6 +13,7 @@ for device in physical_devices:
 
 import stellargraph as sg
 from stellargraph import StellarGraph, StellarDiGraph
+from stellargraph import IndexedArray
 import networkx as nx
 from tqdm.contrib.concurrent import process_map  # or thread_map
 import sys
@@ -49,8 +51,14 @@ def compute_graph(problem, problem_dir):
     x = pd.DataFrame({"x": nodes})
     edges = pd.DataFrame({"source": sources, "target": targets})
 
+    # Extract the node types
+    type_dict = {}
+    for typ in set(x.values.flatten()):
+        type_dict[typ] = IndexedArray(index=x.loc[x["x"] == typ].index.values)
+
     # Create the graph structure
-    st = StellarGraph(x, edges=edges)
+    # st = StellarGraph(x, edges=edges)
+    st = StellarGraph(type_dict, edges=edges)
 
     # Add the indices information
     st.premise_indices = premise_indices
