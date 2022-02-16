@@ -6,13 +6,16 @@ import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
 from tensorflow import keras
+from tensorflow.keras.layers import Embedding
 
 physical_devices = tf.config.list_physical_devices("GPU")
 for device in physical_devices:
     tf.config.experimental.set_memory_growth(device, True)
 
+from keras.models import Sequential
+
 import stellargraph as sg
-from stellargraph import StellarGraph, StellarDiGraph
+from stellargraph import StellarGraph
 from stellargraph import IndexedArray
 import networkx as nx
 from tqdm.contrib.concurrent import process_map  # or thread_map
@@ -32,10 +35,21 @@ NO_TRAINING_SAMPLES = 6000
 # EPOCHS = 10
 # NO_TRAINING_SAMPLES = 10
 
+# Check if embedding layer, if not we create it
+embedding_path = "embedding_layer"
+if not os.path.exists(embedding_path):
+    # Initialise the embedding layer
+    node_embedding = Embedding(17, 64)
+    # Wrap in a model such that it can be saved
+    node_embedding = Sequential(node_embedding)
+    node_embedding.save(embedding_path)
+else:
+    # Load embedding layer
+    node_embedding = keras.models.load_model(embedding_path)
 
-def compute_graph(problem, problem_dir):
 
-    # FIXME
+def compute_graph(problem, problem_dir, embed_nodes=True):
+
     # Read problem and get the problem axioms/conjectures
     # conjecture, premises = read_problem_tptp(problem, dir)
     conjecture, premises, _ = read_problem_deepmath(problem, problem_dir)
@@ -48,17 +62,18 @@ def compute_graph(problem, problem_dir):
         return None
 
     # Need to convert the data into dataframes
-    x = pd.DataFrame({"x": nodes})
     edges = pd.DataFrame({"source": sources, "target": targets})
 
-    # Extract the node types
-    type_dict = {}
-    for typ in set(x.values.flatten()):
-        type_dict[typ] = IndexedArray(index=x.loc[x["x"] == typ].index.values)
+    # Create the nodes
+    if embed_nodes:
+        # Embed the node types using an embedding layer
+        x = np.array(node_embedding(nodes))
+    else:
+        # Add nodes with the type id as the feature
+        x = pd.DataFrame({"x": nodes})
 
-    # Create the graph structure
-    # st = StellarGraph(x, edges=edges)
-    st = StellarGraph(type_dict, edges=edges)
+    # Create graph
+    st = StellarGraph(x, edges=edges)
 
     # Add the indices information
     st.premise_indices = premise_indices
@@ -84,13 +99,13 @@ def graph_distance(graphs):
     return norm
 
 
-def get_graph_dataset(id_file, problem_dir):
+def get_graph_dataset(id_file, problem_dir, embed_nodes=True):
     # Get the graph data
     problems = get_problem_ids(id_file)
     graphs = []
     print("# Processing problems")
     for prob in tqdm(problems):
-        g = compute_graph(prob, problem_dir)
+        g = compute_graph(prob, problem_dir, embed_nodes=embed_nodes)
         # Only add graphs
         if g is not None:
             graphs += [g]
@@ -127,7 +142,7 @@ def create_embedding_model(graphs):
     return embedding_model, pair_model, generator
 
 
-def compute_dataset(graphs):
+def compute_dataset(graphs, save=True):
 
     # Make synthetic dataset
     print("Making dataset")
@@ -139,7 +154,8 @@ def compute_dataset(graphs):
     )
 
     # Save the dataset
-    save_dataset(graph_idx, targets)
+    if save:
+        save_dataset(graph_idx, targets)
 
     return graph_idx, targets
 
