@@ -142,11 +142,15 @@ def create_embedding_model(graphs):
     return embedding_model, pair_model, generator
 
 
-def compute_dataset(graphs, save=True):
+def compute_dataset(
+    graphs,
+    save=True,
+    no_training_samples=NO_TRAINING_SAMPLES,
+):
 
     # Make synthetic dataset
     print("Making dataset")
-    graph_idx = np.random.RandomState(0).randint(len(graphs), size=(NO_TRAINING_SAMPLES, 2))
+    graph_idx = np.random.RandomState(0).randint(len(graphs), size=(no_training_samples, 2))
     # targets = [graph_distance(graphs[left], graphs[right]) for left, right in graph_idx]
 
     targets = process_map(
