@@ -1,12 +1,14 @@
 import os
 import pickle
-
-
+import argparse
+from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.layers import Embedding
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
 
 physical_devices = tf.config.list_physical_devices("GPU")
 for device in physical_devices:
@@ -16,26 +18,51 @@ from keras.models import Sequential
 
 import stellargraph as sg
 from stellargraph import StellarGraph
-from stellargraph import IndexedArray
 import networkx as nx
 from tqdm.contrib.concurrent import process_map  # or thread_map
-import sys
-
-import pandas as pd
 
 from parser import graph
-from utils import read_problem_tptp, read_problem_deepmath
+from utils import read_problem_deepmath
 
-IDX_FILE = "graph_idx.pkl"
-GRAPH_TARGET_FILE = "graph_target.pkl"
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--train_id_file", default="train.txt", help="Name of the file containing the training data in raw/"
+)
+parser.add_argument(
+    "--problem_dir", default="/home/eholden/gnn-entailment-caption/", help="Path to the nndata problems"
+)
+parser.add_argument(
+    "--max_workers", type=int, default=5, help="Max number of workers to use when computing graph targets"
+)
 
-# TODO Undirected or directed?
-EPOCHS = 200
-NO_TRAINING_SAMPLES = 6000
-# EPOCHS = 10
-# NO_TRAINING_SAMPLES = 10
+# TODO add model types as well?
+# TODO What about the validation set?
+parser.add_argument(
+    "--no_training_samples",
+    default=6000,
+    type=int,
+    help="Number of training pair-samples to compute from the training set",
+)
+parser.add_argument("--epochs", default=200, type=int, help="The number of epochs to train the model for")
+parser.add_argument(
+    "--recompute_dataset",
+    default=False,
+    action="store_true",
+    help="If set we recompute the graph dataset for the given parameters",
+)
+parser.add_argument("--retrain", default=False, action="store_true", help="Retrain existing model")
+parser.add_argument(
+    "--embed_problems", default=False, action="store_true", help="Use the GNN to embed the problems"
+)
 
-# Check if embedding layer, if not we create it
+# Set dataset files base names. e.g. 0: train, 1: 6000
+IDX_BASE_NAME = "graph_{0}_dataset_{1}_target.pkl"
+TARGET_BASE_NAME = "graph_{0}_dataset_{1}_idx.pkl"
+MODEL_DIR_BASE_NAME = "embedding_model_{0}_{1}_save"
+
+
+# For the different axiom types we manually create an embedding layer for mapping
+# the types to the embedding space. This creates or loads and existing embedding layer
 embedding_path = "embedding_layer"
 if not os.path.exists(embedding_path):
     # Initialise the embedding layer
@@ -106,7 +133,7 @@ def get_graph_dataset(id_file, problem_dir, embed_nodes=True):
     print("# Processing problems")
     for prob in tqdm(problems):
         g = compute_graph(prob, problem_dir, embed_nodes=embed_nodes)
-        # Only add graphs
+        # If the graph computation failed we do not add it to the graph set
         if g is not None:
             graphs += [g]
         else:
@@ -125,7 +152,7 @@ def get_graph_dataset(id_file, problem_dir, embed_nodes=True):
     return graphs, problems
 
 
-def create_embedding_model(graphs):
+def initialise_embedding_model(graphs):
 
     # Initialize the graph model
     generator = sg.mapper.PaddedGraphGenerator(graphs)
@@ -142,36 +169,31 @@ def create_embedding_model(graphs):
     return embedding_model, pair_model, generator
 
 
-def compute_dataset(
-    graphs,
-    save=True,
-    no_training_samples=NO_TRAINING_SAMPLES,
-):
+def compute_dataset(graphs, no_training_samples, id_file_name, target_file_name, max_workers=5):
 
     # Make synthetic dataset
-    print("Making dataset")
+    print("Making synthetic dataset")
     graph_idx = np.random.RandomState(0).randint(len(graphs), size=(no_training_samples, 2))
-    # targets = [graph_distance(graphs[left], graphs[right]) for left, right in graph_idx]
 
+    # Compute targets
     targets = process_map(
-        graph_distance, ((graphs[left], graphs[right]) for left, right in graph_idx), max_workers=5
+        graph_distance, ((graphs[left], graphs[right]) for left, right in graph_idx), max_workers=max_workers
     )
 
-    # Save the dataset
-    if save:
-        save_dataset(graph_idx, targets)
+    # Save the dataset with the given names
+    save_dataset(id_file_name, graph_idx, target_file_name, targets)
 
     return graph_idx, targets
 
 
-def train_pair_model(pair_model, generator, graph_idx, targets):
+def train_pair_model(pair_model, generator, graph_idx, targets, epochs):
 
     train_gen = generator.flow(graph_idx, batch_size=10, targets=targets)
 
     # Train the model
     print("Training the model")
     pair_model.compile(keras.optimizers.Adam(1e-2), loss="mse")
-    history = pair_model.fit(train_gen, epochs=EPOCHS, verbose=1)
+    history = pair_model.fit(train_gen, epochs=epochs, verbose=1)
     sg.utils.plot_history(history)
 
 
@@ -185,6 +207,7 @@ def embed_graphs(file_name, embedding_model, generator, problems, graphs):
     for name, emb in zip(problems, embeddings):
         result[name] = emb
 
+    print("Saving embedding file to: ", file_name)
     with open(f"{file_name}.pkl", "wb") as f:
         pickle.dump(result, f)
 
@@ -204,81 +227,132 @@ def prune_graph(graph, new_index):
     return new_graph
 
 
-def load_dataset():
-    with open(IDX_FILE, "rb") as f:
+def load_dataset(id_file, target_file):
+    print(f"Loading file {id_file}")
+    with open(id_file, "rb") as f:
         idx = pickle.load(f)
-    with open(GRAPH_TARGET_FILE, "rb") as f:
+
+    print(f"Loading file {target_file}")
+    with open(target_file, "rb") as f:
         targets = pickle.load(f)
 
     return idx, targets
 
 
-def save_dataset(idx, targets):
+def save_dataset(id_file, ids, target_file, targets):
 
-    with open(IDX_FILE, "wb") as f:
-        pickle.dump(idx, f)
-    with open(GRAPH_TARGET_FILE, "wb") as f:
+    with open(id_file, "wb") as f:
+        pickle.dump(ids, f)
+    print(f"Saved file {id_file}")
+
+    with open(target_file, "wb") as f:
         pickle.dump(targets, f)
+    print(f"Saved file {target_file}")
 
 
-def main(id_file, problem_dir):
+def embed_problems(embedding_model, generator, problem_names, problem_graphs, file_name_infix):
 
-    graphs, problems = get_graph_dataset(id_file, problem_dir)
+    # Compute file name prefixes
+    file_prefix = "embedding_unsupervised_" + file_name_infix
 
-    # Create the models and dta generator
-    embedding_model, pair_model, generator = create_embedding_model(graphs)
+    print("# Embedding problem")
+    embed_graphs(file_prefix + "_problem", embedding_model, generator, problem_names, problem_graphs)
 
-    # Compute dataset
-    if os.path.exists(IDX_FILE) and os.path.exists(GRAPH_TARGET_FILE):
-        print("# Loading existing dataset")
-        graph_idx, targets = load_dataset()
+    # FIXME this is somewhat pointless?
+    print("# Embedding conjecture")
+    embed_graphs(
+        file_prefix + "_conjecture",
+        embedding_model,
+        generator,
+        problem_names,
+        [prune_graph(g, g.conjecture_indices) for g in problem_graphs],
+    )
+
+    print("# Embedding premises")
+    embed_graphs(
+        file_prefix + "_premises",
+        embedding_model,
+        generator,
+        problem_names,
+        [prune_graph(g, g.premise_indices) for g in problem_graphs],
+    )
+
+
+def process_dataset(idx, targets):
+
+    # Scale the targets
+    scaler = StandardScaler()
+    targets = scaler.fit_transform(targets)
+
+    return idx, targets
+
+
+def main():
+
+    # Get arguments
+    args = parser.parse_args()
+    # Load training data
+    problem_graphs, problem_names = get_graph_dataset(args.train_id_file, args.problem_dir)
+
+    # Compute the file names for the dataset
+    id_name = Path(args.train_id_file).stem
+    train_file_id = IDX_BASE_NAME.format(id_name, args.no_training_samples)
+    train_file_targets = TARGET_BASE_NAME.format(id_name, args.no_training_samples)
+
+    # If flag is set to recompute dataset or the appropriate files do not exist, we recompute the dataset
+    if args.recompute_dataset or not (os.path.exists(train_file_id) and os.path.exists(train_file_targets)):
+        print(f"# Computing new dataset of size {args.no_training_samples}")
+        graph_idx, targets = compute_dataset(
+            problem_graphs,
+            args.no_training_samples,
+            train_file_id,
+            train_file_targets,
+            max_workers=args.max_workers,
+        )
     else:
-        graph_idx, targets = compute_dataset(graphs)
+        print("# Loading existing dataset")
+        graph_idx, targets = load_dataset(train_file_id, train_file_targets)
 
-    # Train the pair model
-    train_pair_model(pair_model, generator, graph_idx, targets)
+    graph_idx, targets = process_dataset(graph_idx, targets)
 
-    # Save the embedding model
-    embedding_model.save("embedding_model_save")
-    # """
-    # embedding_model = keras.models.load_model("embedding_model_save")
-    # generator = sg.mapper.PaddedGraphGenerator(graphs)
+    # Create the models and data generator
+    embedding_model, pair_model, generator = initialise_embedding_model(problem_graphs)
 
+    # Get the name of the appropriate model dir
+    model_dir = MODEL_DIR_BASE_NAME.format(id_name, args.no_training_samples)
+
+    # Train the model if retraining flag is set or it does not already exist
+    if args.retrain or not os.path.exists(model_dir):
+        print("Training embedding model on the pair dataset")
+
+        # Train the pair model
+        train_pair_model(pair_model, generator, graph_idx, targets, args.epochs)
+
+        # Save the embedding model
+        print("Saving the embedding model to ", model_dir)
+        embedding_model.save(model_dir)
+    else:
+        print("Loading model")
+        embedding_model = keras.models.load_model(model_dir)
+        generator = sg.mapper.PaddedGraphGenerator(problem_graphs)
+        # TODO due to the evaluation I want to get the pair_model with the pre trained gnn as well
     print(embedding_model)
 
     # Embed the problems
-    print("# Embedding problem")
-    embed_graphs("embedding_unsupervised_problem", embedding_model, generator, problems, graphs)
-    print("# Embedding conjecture")
-    embed_graphs(
-        "embedding_unsupervised_conjecture",
-        embedding_model,
-        generator,
-        problems,
-        [prune_graph(g, g.conjecture_indices) for g in graphs],
-    )
-    print("# Embedding premises")
-    embed_graphs(
-        "embedding_unsupervised_premises",
-        embedding_model,
-        generator,
-        problems,
-        [prune_graph(g, g.premise_indices) for g in graphs],
-    )
+    if args.embed_problems:
+        embed_problems(
+            embedding_model,
+            generator,
+            problem_names,
+            problem_graphs,
+            "{args.train_id_file}_{args.no_training_samples}",  # Use context parameters as file infix
+        )
+    print("# Finished")
 
 
 def run_main():
 
-    # problem_dir = "/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/"
-    # id_file = "axiom_caption_test.txt"
-    # id_file = "jjt_fof_sine_1_0.txt"
-
-    problem_dir = "/home/eholden/gnn-entailment-caption/"
-    id_file = "deepmath.txt"
-    # id_file = "validation.txt"
-    # id_file = "train.txt"
-
-    main(id_file, problem_dir)
+    main()
 
 
 if __name__ == "__main__":
