@@ -62,9 +62,9 @@ parser.add_argument(
 )
 
 # Set dataset files base names. e.g. 0: train, 1: 6000
-IDX_BASE_NAME = "graph_{0}_dataset_{1}_target.pkl"
-TARGET_BASE_NAME = "graph_{0}_dataset_{1}_idx.pkl"
-MODEL_DIR_BASE_NAME = "embedding_model_{0}_{1}_save"
+IDX_BASE_NAME = "target.pkl"
+TARGET_BASE_NAME = "idx.pkl"
+MODEL_DIR_BASE_NAME = "embedding_model"
 
 
 # For the different axiom types we manually create an embedding layer for mapping
@@ -349,39 +349,40 @@ def main():
 
     # Get arguments
     args = parser.parse_args()
+
+    # Check working direcotry for storing models, datasets and embeddings
+    work_dir = f"unsupervised_{Path(args.train_id_file).stem}_{args.no_training_samples}"
+    if not os.path.exists(work_dir):
+        print("Creating working directory: ", work_dir)
+        os.mkdir(work_dir)
+
     # Load training data
     problem_graphs, problem_names = get_graph_dataset(args.train_id_file, args.problem_dir)
 
-    # Compute the file names for the dataset
-    id_name = Path(args.train_id_file).stem
-    train_file_id = IDX_BASE_NAME.format(id_name, args.no_training_samples)
-    train_file_targets = TARGET_BASE_NAME.format(id_name, args.no_training_samples)
-
-    print(train_file_id, train_file_targets)
     # If flag is set to recompute dataset or the appropriate files do not exist, we recompute the dataset
-    if args.recompute_dataset or not (os.path.exists(train_file_id) and os.path.exists(train_file_targets)):
+    id_path = os.path.join(work_dir, IDX_BASE_NAME)
+    target_path = os.path.join(work_dir, TARGET_BASE_NAME)
+    if args.recompute_dataset or not (os.path.exists(id_path) and os.path.exists(target_path)):
         print(f"# Computing new dataset of size {args.no_training_samples}")
         graph_idx, targets = compute_dataset(
             problem_graphs,
             args.no_training_samples,
-            train_file_id,
-            train_file_targets,
+            id_path,
+            target_path,
             max_workers=args.max_workers,
         )
     else:
         print("# Loading existing dataset")
-        graph_idx, targets = load_dataset(train_file_id, train_file_targets)
+        graph_idx, targets = load_dataset(id_path, target_path)
 
+    #  Scale the targets
     graph_idx, targets = process_dataset(graph_idx, targets)
-
-    # Create the models and data generator TODO change this to how it is now being used!
-    # embedding_model, pair_model, generator = initialise_embedding_model(problem_graphs) FIXME
 
     # Get the graph generator
     graph_generator = get_graph_generator(problem_graphs)
 
     # Get the name of the appropriate model dir
-    model_dir = MODEL_DIR_BASE_NAME.format(id_name, args.no_training_samples)
+    model_dir = os.path.join(work_dir, MODEL_DIR_BASE_NAME)
 
     # As default we have no pair model
     pair_model = None
