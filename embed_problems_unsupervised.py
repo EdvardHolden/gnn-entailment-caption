@@ -6,7 +6,7 @@ import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras.layers import Embedding
+from tensorflow.keras.layers import Embedding, Input
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
@@ -53,6 +53,12 @@ parser.add_argument(
 parser.add_argument("--retrain", default=False, action="store_true", help="Retrain existing model")
 parser.add_argument(
     "--embed_problems", default=False, action="store_true", help="Use the GNN to embed the problems"
+)
+parser.add_argument(
+    "--evaluate",
+    default=False,
+    action="store_true",
+    help="Evaluate the model on the training and validation set",
 )
 
 # Set dataset files base names. e.g. 0: train, 1: 6000
@@ -152,7 +158,51 @@ def get_graph_dataset(id_file, problem_dir, embed_nodes=True):
     return graphs, problems
 
 
-def initialise_embedding_model(graphs):
+def get_graph_generator(graphs):
+    return sg.mapper.PaddedGraphGenerator(graphs)
+
+
+def initialise_embedding_model(generator):
+
+    # TODO  pooling (callable, optional): a Keras layer or function that takes two arguments and return
+    gc_model = sg.layer.GCNSupervisedGraphClassification(
+        [64, 32], ["relu", "relu"], generator, pool_all_layers=True  # TODO what about the pool argument?
+    )
+    inp1, out1 = gc_model.in_out_tensors()
+    inp2, out2 = gc_model.in_out_tensors()
+    embedding_model = keras.Model(inp1, out1)
+
+    return embedding_model
+
+
+def _get_in_out_tensor(generator, embedding_model):
+    """Use this function to get the list of input tensor used in the gc model.
+    This makes it possible to use TODO"""
+
+    # x_t = Input(shape=(None, generator.node_features_size))
+    x_t = Input(shape=(None, 1))  # TODO Need to retrain and set to above!
+    mask = Input(shape=(None,), dtype=tf.bool)
+    A_m = Input(shape=(None, None))
+
+    x_inp = [x_t, mask, A_m]
+    x_out = embedding_model(x_inp)
+
+    return x_inp, x_out
+
+
+def get_pair_model(generator, embedding_model):
+
+    inp1, out1 = _get_in_out_tensor(generator, embedding_model)
+    inp2, out2 = _get_in_out_tensor(generator, embedding_model)
+
+    vec_distance = tf.norm(out1 - out2, axis=1)
+    pair_model = keras.Model(inp1 + inp2, vec_distance)
+
+    return pair_model
+
+
+def initialise_embedding_model_old(graphs):
+    # TODO rewrite/remove?
 
     # Initialize the graph model
     generator = sg.mapper.PaddedGraphGenerator(graphs)
@@ -289,6 +339,14 @@ def process_dataset(idx, targets):
 
 def main():
 
+    # TODO it would be nice to have more of a direcotry structure for this.
+    # e.g.
+    # unsupervised_6000_train/
+    # target.pkl
+    # idx.pkl
+    # saved_model/
+    # embeddings___
+
     # Get arguments
     args = parser.parse_args()
     # Load training data
@@ -299,6 +357,7 @@ def main():
     train_file_id = IDX_BASE_NAME.format(id_name, args.no_training_samples)
     train_file_targets = TARGET_BASE_NAME.format(id_name, args.no_training_samples)
 
+    print(train_file_id, train_file_targets)
     # If flag is set to recompute dataset or the appropriate files do not exist, we recompute the dataset
     if args.recompute_dataset or not (os.path.exists(train_file_id) and os.path.exists(train_file_targets)):
         print(f"# Computing new dataset of size {args.no_training_samples}")
@@ -315,34 +374,48 @@ def main():
 
     graph_idx, targets = process_dataset(graph_idx, targets)
 
-    # Create the models and data generator
-    embedding_model, pair_model, generator = initialise_embedding_model(problem_graphs)
+    # Create the models and data generator TODO change this to how it is now being used!
+    # embedding_model, pair_model, generator = initialise_embedding_model(problem_graphs) FIXME
+
+    # Get the graph generator
+    graph_generator = get_graph_generator(problem_graphs)
 
     # Get the name of the appropriate model dir
     model_dir = MODEL_DIR_BASE_NAME.format(id_name, args.no_training_samples)
 
+    # As default we have no pair model
+    pair_model = None
+
     # Train the model if retraining flag is set or it does not already exist
     if args.retrain or not os.path.exists(model_dir):
-        print("Training embedding model on the pair dataset")
+        # Initialise the embedding and pair model
+        embedding_model = initialise_embedding_model(graph_generator)
+        pair_model = get_pair_model(graph_generator, embedding_model)
 
         # Train the pair model
-        train_pair_model(pair_model, generator, graph_idx, targets, args.epochs)
+        print("Training embedding model on the pair dataset")
+        train_pair_model(pair_model, graph_generator, graph_idx, targets, args.epochs)
 
         # Save the embedding model
         print("Saving the embedding model to ", model_dir)
         embedding_model.save(model_dir)
     else:
-        print("Loading model")
+        print("Loading existing model")
         embedding_model = keras.models.load_model(model_dir)
-        generator = sg.mapper.PaddedGraphGenerator(problem_graphs)
-        # TODO due to the evaluation I want to get the pair_model with the pre trained gnn as well
-    print(embedding_model)
+
+    if args.evaluate:
+        # Create pair model if it doesnt exist due to loading existing embedding model
+        if pair_model is None:
+            pair_model = get_pair_model(graph_generator, embedding_model)
+
+        print("Evaluating pair model")
+        evaluate_pair_model(pair_model, evaluation_dataset)
 
     # Embed the problems
     if args.embed_problems:
         embed_problems(
             embedding_model,
-            generator,
+            graph_generator,
             problem_names,
             problem_graphs,
             "{args.train_id_file}_{args.no_training_samples}",  # Use context parameters as file infix
