@@ -29,6 +29,9 @@ parser.add_argument(
     "--train_id_file", default="train.txt", help="Name of the file containing the training data in raw/"
 )
 parser.add_argument(
+    "--val_id_file", default="validation.txt", help="Name of the file containing the training data in raw/"
+)
+parser.add_argument(
     "--problem_dir", default="/home/eholden/gnn-entailment-caption/", help="Path to the nndata problems"
 )
 parser.add_argument(
@@ -36,13 +39,19 @@ parser.add_argument(
 )
 
 # TODO add model types as well?
-# TODO What about the validation set?
 parser.add_argument(
     "--no_training_samples",
     default=6000,
     type=int,
     help="Number of training pair-samples to compute from the training set",
 )
+parser.add_argument(
+    "--no_validation_samples",
+    default=2000,
+    type=int,
+    help="Number of validation pair-samples to compute from the training set",
+)
+
 parser.add_argument("--epochs", default=200, type=int, help="The number of epochs to train the model for")
 parser.add_argument(
     "--recompute_dataset",
@@ -79,6 +88,10 @@ if not os.path.exists(embedding_path):
 else:
     # Load embedding layer
     node_embedding = keras.models.load_model(embedding_path)
+
+
+# Define the scaler here so we do not have to pass it around. Will only be fitted we use the preprocessing function.
+scaler = StandardScaler()
 
 
 def compute_graph(problem, problem_dir, embed_nodes=True):
@@ -177,10 +190,9 @@ def initialise_embedding_model(generator):
 
 def _get_in_out_tensor(generator, embedding_model):
     """Use this function to get the list of input tensor used in the gc model.
-    This makes it possible to use TODO"""
+    This makes it possible to create a pair model from a saved model"""
 
-    # x_t = Input(shape=(None, generator.node_features_size))
-    x_t = Input(shape=(None, 1))  # TODO Need to retrain and set to above!
+    x_t = Input(shape=(None, generator.node_features_size))
     mask = Input(shape=(None,), dtype=tf.bool)
     A_m = Input(shape=(None, None))
 
@@ -199,24 +211,6 @@ def get_pair_model(generator, embedding_model):
     pair_model = keras.Model(inp1 + inp2, vec_distance)
 
     return pair_model
-
-
-def initialise_embedding_model_old(graphs):
-    # TODO rewrite/remove?
-
-    # Initialize the graph model
-    generator = sg.mapper.PaddedGraphGenerator(graphs)
-    gc_model = sg.layer.GCNSupervisedGraphClassification(
-        [64, 32], ["relu", "relu"], generator, pool_all_layers=True
-    )
-    inp1, out1 = gc_model.in_out_tensors()
-    inp2, out2 = gc_model.in_out_tensors()
-
-    vec_distance = tf.norm(out1 - out2, axis=1)
-    pair_model = keras.Model(inp1 + inp2, vec_distance)
-    embedding_model = keras.Model(inp1, out1)
-
-    return embedding_model, pair_model, generator
 
 
 def compute_dataset(graphs, no_training_samples, id_file_name, target_file_name, max_workers=5):
@@ -300,10 +294,10 @@ def save_dataset(id_file, ids, target_file, targets):
     print(f"Saved file {target_file}")
 
 
-def embed_problems(embedding_model, generator, problem_names, problem_graphs, file_name_infix):
+def embed_problems(embedding_model, generator, problem_names, problem_graphs, work_dir):
 
     # Compute file name prefixes
-    file_prefix = "embedding_unsupervised_" + file_name_infix
+    file_prefix = os.path.join(work_dir, "embedding_unsupervised_")
 
     print("# Embedding problem")
     embed_graphs(file_prefix + "_problem", embedding_model, generator, problem_names, problem_graphs)
@@ -330,72 +324,58 @@ def embed_problems(embedding_model, generator, problem_names, problem_graphs, fi
 
 def process_dataset(idx, targets):
 
-    # Scale the targets
-    scaler = StandardScaler()
-    targets = scaler.fit_transform(targets)
+    # Transform to the correct 2d format for the scaler
+    targets = np.array(targets).reshape(-1, 1)
+    # Check if we have to call fit
+    if hasattr(scaler, "n_samples_seen_"):
+        targets = scaler.transform(targets)
+    else:
+        targets = scaler.fit_transform(targets)
+
+    # Reshape back
+    targets = targets.reshape(-1)
 
     return idx, targets
 
 
-def main():
+def evaluate_pair_model(pair_model, generator, graph_idx, targets):
 
-    # TODO it would be nice to have more of a direcotry structure for this.
-    # e.g.
-    # unsupervised_6000_train/
-    # target.pkl
-    # idx.pkl
-    # saved_model/
-    # embeddings___
+    train_gen = generator.flow(graph_idx, batch_size=10, targets=targets)
+    pair_model.compile(keras.optimizers.Adam(1e-2), loss="mse")
 
-    # Get arguments
-    args = parser.parse_args()
+    score = pair_model.evaluate(train_gen, verbose=1)
+    print(f"MSE: {score:.2f}")
+    return score
 
-    # Check working direcotry for storing models, datasets and embeddings
-    work_dir = f"unsupervised_{Path(args.train_id_file).stem}_{args.no_training_samples}"
-    if not os.path.exists(work_dir):
-        print("Creating working directory: ", work_dir)
-        os.mkdir(work_dir)
 
-    # Load training data
-    problem_graphs, problem_names = get_graph_dataset(args.train_id_file, args.problem_dir)
-
-    # If flag is set to recompute dataset or the appropriate files do not exist, we recompute the dataset
-    id_path = os.path.join(work_dir, IDX_BASE_NAME)
-    target_path = os.path.join(work_dir, TARGET_BASE_NAME)
-    if args.recompute_dataset or not (os.path.exists(id_path) and os.path.exists(target_path)):
-        print(f"# Computing new dataset of size {args.no_training_samples}")
+def get_dataset(id_path, target_path, recompute_dataset, problem_graphs, no_training_samples, max_workers):
+    if recompute_dataset or not (os.path.exists(id_path) and os.path.exists(target_path)):
+        print(f"# Computing new dataset of size {no_training_samples}")
         graph_idx, targets = compute_dataset(
             problem_graphs,
-            args.no_training_samples,
+            no_training_samples,
             id_path,
             target_path,
-            max_workers=args.max_workers,
+            max_workers=max_workers,
         )
     else:
         print("# Loading existing dataset")
         graph_idx, targets = load_dataset(id_path, target_path)
+    return graph_idx, targets
 
-    #  Scale the targets
-    graph_idx, targets = process_dataset(graph_idx, targets)
 
-    # Get the graph generator
-    graph_generator = get_graph_generator(problem_graphs)
+def get_models(model_dir, retrain, graph_generator, graph_idx, targets, epochs):
 
-    # Get the name of the appropriate model dir
-    model_dir = os.path.join(work_dir, MODEL_DIR_BASE_NAME)
-
-    # As default we have no pair model
+    # Initialise pair_model as false as we are only initialising it if training the model
     pair_model = None
-
-    # Train the model if retraining flag is set or it does not already exist
-    if args.retrain or not os.path.exists(model_dir):
+    if retrain or not os.path.exists(model_dir):
         # Initialise the embedding and pair model
         embedding_model = initialise_embedding_model(graph_generator)
         pair_model = get_pair_model(graph_generator, embedding_model)
 
         # Train the pair model
         print("Training embedding model on the pair dataset")
-        train_pair_model(pair_model, graph_generator, graph_idx, targets, args.epochs)
+        train_pair_model(pair_model, graph_generator, graph_idx, targets, epochs)
 
         # Save the embedding model
         print("Saving the embedding model to ", model_dir)
@@ -404,30 +384,114 @@ def main():
         print("Loading existing model")
         embedding_model = keras.models.load_model(model_dir)
 
+    return embedding_model, pair_model
+
+
+def get_working_directory(id_file, no_samples):
+
+    work_dir = f"unsupervised_{Path(id_file).stem}_{no_samples}"
+    if not os.path.exists(work_dir):
+        print("Creating working directory: ", work_dir)
+        os.mkdir(work_dir)
+
+    return work_dir
+
+
+def get_dataset_paths(work_dir):
+    id_path = os.path.join(work_dir, IDX_BASE_NAME)
+    target_path = os.path.join(work_dir, TARGET_BASE_NAME)
+    return id_path, target_path
+
+
+def main():
+
+    # Get arguments
+    args = parser.parse_args()
+
+    # Check working direcotry for storing models, datasets and embeddings
+    train_work_dir = get_working_directory(args.train_id_file, args.no_training_samples)
+    # Load training dat
+    train_problem_graphs, train_problem_names = get_graph_dataset(args.train_id_file, args.problem_dir)
+
+    # If flag is set to recompute dataset or the appropriate files do not exist, we recompute the dataset
+    train_id_path = os.path.join(train_work_dir, IDX_BASE_NAME)
+    train_target_path = os.path.join(train_work_dir, TARGET_BASE_NAME)
+    train_graph_idx, train_targets = get_dataset(
+        train_id_path,
+        train_target_path,
+        args.recompute_dataset,
+        train_problem_graphs,
+        args.no_training_samples,
+        args.max_workers,
+    )
+
+    #  Scale the targets
+    train_graph_idx, train_targets = process_dataset(train_graph_idx, train_targets)
+
+    # Get the graph generator
+    train_graph_generator = get_graph_generator(train_problem_graphs)
+
+    # Get the name of the appropriate model dir
+    model_dir = os.path.join(train_work_dir, MODEL_DIR_BASE_NAME)
+
+    # Get the models and train the embedding model if retraining flag is set or it does not already exist
+    embedding_model, pair_model = get_models(
+        model_dir, args.retrain, train_graph_generator, train_graph_idx, train_targets, args.epochs
+    )
+
     if args.evaluate:
         # Create pair model if it doesnt exist due to loading existing embedding model
         if pair_model is None:
-            pair_model = get_pair_model(graph_generator, embedding_model)
+            pair_model = get_pair_model(train_graph_generator, embedding_model)
 
-        print("Evaluating pair model")
-        evaluate_pair_model(pair_model, evaluation_dataset)
+        # Validation data: If flag is set to recompute dataset or the appropriate files do not exist, we recompute the dataset
+        val_work_dir = get_working_directory(args.val_id_file, args.no_validation_samples)
+        val_id_path, val_target_path = get_dataset_paths(val_work_dir)
+
+        # Load validation data
+        val_problem_graphs, val_problem_names = get_graph_dataset(args.val_id_file, args.problem_dir)
+        # Get the valdiation graph generator
+        val_graph_generator = get_graph_generator(val_problem_graphs)
+
+        # Get the validation data set
+        val_graph_idx, val_targets = get_dataset(
+            val_id_path,
+            val_target_path,
+            args.recompute_dataset,
+            val_problem_graphs,
+            args.no_validation_samples,
+            args.max_workers,
+        )
+
+        print("Evaluating pair model on the training set")
+        evaluate_pair_model(pair_model, train_graph_generator, train_graph_idx, train_targets)
+        print("Evaluating pair model on the validation set")
+        evaluate_pair_model(pair_model, val_graph_generator, val_graph_idx, val_targets)
+
+    # DELETE the previous data sets to free up memory
+    del train_problem_graphs, train_problem_names, train_graph_generator, train_graph_idx, train_targets
+    try:
+        del val_problem_graphs, val_problem_names, val_graph_generator, val_graph_idx, val_targets
+    except NameError:
+        pass
 
     # Embed the problems
     if args.embed_problems:
+        # Get the data of deepmath - want to embed all the problems
+        # Load all the graph data
+        print("Load deepmath data")
+        deepmath_problem_graphs, deepmath_problem_names = get_graph_dataset("deepmath.txt", args.problem_dir)
+        deepmath_graph_generator = get_graph_generator(deepmath_problem_graphs)
+
         embed_problems(
             embedding_model,
-            graph_generator,
-            problem_names,
-            problem_graphs,
-            "{args.train_id_file}_{args.no_training_samples}",  # Use context parameters as file infix
+            deepmath_graph_generator,
+            deepmath_problem_names,
+            deepmath_problem_graphs,
+            train_work_dir,  # Use context parameters as file infix
         )
     print("# Finished")
 
 
-def run_main():
-
-    main()
-
-
 if __name__ == "__main__":
-    run_main()
+    main()
