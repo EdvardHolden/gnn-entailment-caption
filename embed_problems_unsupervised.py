@@ -24,6 +24,12 @@ from tqdm.contrib.concurrent import process_map  # or thread_map
 from parser import graph
 from utils import read_problem_deepmath
 
+# Base names and parameters
+IDX_BASE_NAME = "target.pkl"
+TARGET_BASE_NAME = "idx.pkl"
+MODEL_DIR_BASE_NAME = "embedding_model"
+BATCH_SIZE = 32
+
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--train_id_file", default="train.txt", help="Name of the file containing the training data in raw/"
@@ -38,7 +44,6 @@ parser.add_argument(
     "--max_workers", type=int, default=5, help="Max number of workers to use when computing graph targets"
 )
 
-# TODO do something about the batch sizes?
 # TODO add model types as well?
 parser.add_argument(
     "--no_training_samples",
@@ -70,13 +75,6 @@ parser.add_argument(
     action="store_true",
     help="Evaluate the model on the training and validation set",
 )
-
-# Set dataset files base names. e.g. 0: train, 1: 6000
-IDX_BASE_NAME = "target.pkl"
-TARGET_BASE_NAME = "idx.pkl"
-MODEL_DIR_BASE_NAME = "embedding_model"
-
-# TODO batch size
 
 
 # For the different axiom types we manually create an embedding layer for mapping
@@ -237,7 +235,7 @@ def compute_synthetic_dataset(graphs, no_training_samples, id_file_name, target_
 
 def train_pair_model(pair_model, generator, graph_idx, targets, epochs):
 
-    train_gen = generator.flow(graph_idx, batch_size=10, targets=targets)
+    train_gen = generator.flow(graph_idx, batch_size=BATCH_SIZE, targets=targets)
 
     # Train the model
     print("Training the model")
@@ -359,7 +357,7 @@ def process_dataset(idx, targets):
 def evaluate_pair_model(pair_model, generator, graph_idx, targets):
 
     # Evaluate graph pairs
-    train_gen = generator.flow(graph_idx, batch_size=10, targets=targets)
+    train_gen = generator.flow(graph_idx, batch_size=BATCH_SIZE, targets=targets)
     pair_model.compile(keras.optimizers.Adam(1e-2), loss="mse")
 
     score = pair_model.evaluate(train_gen, verbose=1)
@@ -449,7 +447,7 @@ def main():
     # Scale the targets
     train_graph_idx, train_targets = process_dataset(train_graph_idx, train_targets)
 
-    # Get the graph generator - TODO should make a generic generator! and place it on the top
+    # Get the graph generator
     graph_generator = get_graph_generator(train_problem_graphs)
 
     # Get the name of the appropriate model dir
@@ -459,8 +457,6 @@ def main():
     embedding_model, pair_model = get_models(
         model_dir, args.retrain, graph_generator, train_graph_idx, train_targets, args.epochs
     )
-
-    # TODO looks like I might only need one graph generator?
 
     if args.evaluate:
         # Create pair model if it doesnt exist due to loading existing embedding model
