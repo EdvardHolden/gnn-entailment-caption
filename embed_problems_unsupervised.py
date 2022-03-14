@@ -450,14 +450,14 @@ def main():
     train_graph_idx, train_targets = process_dataset(train_graph_idx, train_targets)
 
     # Get the graph generator - TODO should make a generic generator! and place it on the top
-    train_graph_generator = get_graph_generator(train_problem_graphs)
+    graph_generator = get_graph_generator(train_problem_graphs)
 
     # Get the name of the appropriate model dir
     model_dir = os.path.join(train_work_dir, MODEL_DIR_BASE_NAME)
 
     # Get the models and train the embedding model if retraining flag is set or it does not already exist
     embedding_model, pair_model = get_models(
-        model_dir, args.retrain, train_graph_generator, train_graph_idx, train_targets, args.epochs
+        model_dir, args.retrain, graph_generator, train_graph_idx, train_targets, args.epochs
     )
 
     # TODO looks like I might only need one graph generator?
@@ -465,7 +465,7 @@ def main():
     if args.evaluate:
         # Create pair model if it doesnt exist due to loading existing embedding model
         if pair_model is None:
-            pair_model = get_pair_model(train_graph_generator, embedding_model)
+            pair_model = get_pair_model(graph_generator, embedding_model)
 
         # Validation data: If flag is set to recompute dataset or the appropriate files do not exist, we recompute the dataset
         val_work_dir = get_working_directory(args.val_id_file, args.no_validation_samples)
@@ -473,8 +473,6 @@ def main():
 
         # Load validation data
         val_problem_graphs, val_problem_names = get_graph_dataset(args.val_id_file, args.problem_dir)
-        # Get the valdiation graph generator
-        val_graph_generator = get_graph_generator(val_problem_graphs)
 
         # Get the validation data set
         val_graph_idx, val_targets = get_synthetic_dataset(
@@ -489,14 +487,14 @@ def main():
         train_graph_idx, train_targets = process_dataset(train_graph_idx, train_targets)
 
         print("Evaluating pair model on the training set")
-        evaluate_pair_model(pair_model, train_graph_generator, train_graph_idx, train_targets)
+        evaluate_pair_model(pair_model, graph_generator, train_graph_idx, train_targets)
         print("Evaluating pair model on the validation set")
-        evaluate_pair_model(pair_model, val_graph_generator, val_graph_idx, val_targets)
+        evaluate_pair_model(pair_model, graph_generator, val_graph_idx, val_targets)
 
     # DELETE the previous data sets to free up memory
-    del train_problem_graphs, train_problem_names, train_graph_generator, train_graph_idx, train_targets
+    del train_problem_graphs, train_problem_names, train_graph_idx, train_targets
     try:
-        del val_problem_graphs, val_problem_names, val_graph_generator, val_graph_idx, val_targets
+        del val_problem_graphs, val_problem_names, val_graph_idx, val_targets
     except NameError:
         pass
 
@@ -507,12 +505,10 @@ def main():
         print("Load deepmath data")
         deepmath_problem_graphs, deepmath_problem_names = get_graph_dataset("deepmath.txt", args.problem_dir)
 
-        # TODO SIGNLE GENERATOR!
-        deepmath_graph_generator = get_graph_generator(deepmath_problem_graphs)
-
+        # Embed the problem graphs and save the result
         embed_problems(
             embedding_model,
-            deepmath_graph_generator,
+            graph_generator,
             deepmath_problem_names,
             deepmath_problem_graphs,
             train_work_dir,  # Use context parameters as file infix
