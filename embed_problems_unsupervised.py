@@ -6,7 +6,7 @@ import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras.layers import Embedding, Input
+from tensorflow.keras.layers import Embedding, Input, Layer, GlobalAveragePooling1D
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
@@ -38,6 +38,7 @@ parser.add_argument(
     "--max_workers", type=int, default=5, help="Max number of workers to use when computing graph targets"
 )
 
+# TODO do something about the batch sizes?
 # TODO add model types as well?
 parser.add_argument(
     "--no_training_samples",
@@ -74,6 +75,8 @@ parser.add_argument(
 IDX_BASE_NAME = "target.pkl"
 TARGET_BASE_NAME = "idx.pkl"
 MODEL_DIR_BASE_NAME = "embedding_model"
+
+# TODO batch size
 
 
 # For the different axiom types we manually create an embedding layer for mapping
@@ -177,12 +180,11 @@ def get_graph_generator(graphs):
 
 def initialise_embedding_model(generator):
 
-    # TODO  pooling (callable, optional): a Keras layer or function that takes two arguments and return
+    # Create model with identity as the pooling layer, we perform pooling outside this model
     gc_model = sg.layer.GCNSupervisedGraphClassification(
-        [64, 32], ["relu", "relu"], generator, pool_all_layers=True  # TODO what about the pool argument?
+        [64, 32], ["relu", "relu"], generator, pool_all_layers=False, pooling=Layer()
     )
     inp1, out1 = gc_model.in_out_tensors()
-    inp2, out2 = gc_model.in_out_tensors()
     embedding_model = keras.Model(inp1, out1)
 
     return embedding_model
@@ -207,13 +209,16 @@ def get_pair_model(generator, embedding_model):
     inp1, out1 = _get_in_out_tensor(generator, embedding_model)
     inp2, out2 = _get_in_out_tensor(generator, embedding_model)
 
+    out1 = GlobalAveragePooling1D(data_format="channels_last")(out1)
+    out2 = GlobalAveragePooling1D(data_format="channels_last")(out2)
+
     vec_distance = tf.norm(out1 - out2, axis=1)
     pair_model = keras.Model(inp1 + inp2, vec_distance)
 
     return pair_model
 
 
-def compute_dataset(graphs, no_training_samples, id_file_name, target_file_name, max_workers=5):
+def compute_synthetic_dataset(graphs, no_training_samples, id_file_name, target_file_name, max_workers=5):
 
     # Make synthetic dataset
     print("Making synthetic dataset")
@@ -243,8 +248,8 @@ def train_pair_model(pair_model, generator, graph_idx, targets, epochs):
 
 def embed_graphs(file_name, embedding_model, generator, problems, graphs):
 
-    embeddings = embedding_model.predict(generator.flow(graphs))
-    print("Embedding")
+    # Predict the embedding for all the nodes
+    embeddings = embedding_model.predict(generator.flow(graphs), verbose=1)
 
     # Save the dictionary of embeddings
     result = {}
@@ -256,22 +261,34 @@ def embed_graphs(file_name, embedding_model, generator, problems, graphs):
         pickle.dump(result, f)
 
 
-def prune_graph(graph, new_index):
-    # Extract subset of nodes
-    node_features = graph.node_features()[new_index]
+def embed_graphs_individual(file_name, embedding_model, generator, problem_names, problem_graphs, index=None):
 
-    # Only keep edges in the new subset (offset of 1)
-    edges = [(s - 1, t - 1) for s, t in graph.edges() if s - 1 in new_index and t - 1 in new_index]
+    # Need to embed each problem individually due to the varying number of nodes
+    result = {}
+    for name, problem_graph in tqdm(zip(problem_names, problem_graphs)):
+        emb = embedding_model.predict(generator.flow([problem_graph]))
 
-    x = pd.DataFrame(node_features, index=new_index)
-    edges = pd.DataFrame(edges, columns=["source", "target"])
+        # Extract the relevant nodes
+        if index == "premise":
+            emb = emb[0][problem_graph.premise_indices]
+        elif index == "conjecture":
+            emb = emb[0][problem_graph.conjecture_indices]
+        else:
+            pass
 
-    new_graph = StellarGraph(x, edges=edges)
+        # Pooling average
+        emb = np.average(emb, axis=0)
 
-    return new_graph
+        # Save the result
+        result[name] = emb
+
+    file_name += index
+    print("Saving embedding file to: ", file_name)
+    with open(f"{file_name}.pkl", "wb") as f:
+        pickle.dump(result, f)
 
 
-def load_dataset(id_file, target_file):
+def load_synthetic_dataset(id_file, target_file):
     print(f"Loading file {id_file}")
     with open(id_file, "rb") as f:
         idx = pickle.load(f)
@@ -299,26 +316,27 @@ def embed_problems(embedding_model, generator, problem_names, problem_graphs, wo
     # Compute file name prefixes
     file_prefix = os.path.join(work_dir, "embedding_unsupervised_")
 
-    print("# Embedding problem")
-    embed_graphs(file_prefix + "_problem", embedding_model, generator, problem_names, problem_graphs)
+    # When we embed the whole problem we wrap the output into a globalaverage pooling layer as this will be
+    # more effective than stepping through each problem individually
+    print("# Embedding all problem nodes")
+    embedding_model_pooling = keras.Model(
+        embedding_model.input, GlobalAveragePooling1D(data_format="channels_last")(embedding_model.output)
+    )
+    embed_graphs(file_prefix + "problem", embedding_model_pooling, generator, problem_names, problem_graphs)
 
-    # FIXME this is somewhat pointless?
-    print("# Embedding conjecture")
-    embed_graphs(
-        file_prefix + "_conjecture",
+    print("# Embedding conjecture nodes")
+    embed_graphs_individual(
+        file_prefix,
         embedding_model,
         generator,
         problem_names,
-        [prune_graph(g, g.conjecture_indices) for g in problem_graphs],
+        problem_graphs,
+        index="conjecture",
     )
 
-    print("# Embedding premises")
-    embed_graphs(
-        file_prefix + "_premises",
-        embedding_model,
-        generator,
-        problem_names,
-        [prune_graph(g, g.premise_indices) for g in problem_graphs],
+    print("# Embedding premise nodes")
+    embed_graphs_individual(
+        file_prefix, embedding_model, generator, problem_names, problem_graphs, index="premise"
     )
 
 
@@ -340,6 +358,7 @@ def process_dataset(idx, targets):
 
 def evaluate_pair_model(pair_model, generator, graph_idx, targets):
 
+    # Evaluate graph pairs
     train_gen = generator.flow(graph_idx, batch_size=10, targets=targets)
     pair_model.compile(keras.optimizers.Adam(1e-2), loss="mse")
 
@@ -348,10 +367,12 @@ def evaluate_pair_model(pair_model, generator, graph_idx, targets):
     return score
 
 
-def get_dataset(id_path, target_path, recompute_dataset, problem_graphs, no_training_samples, max_workers):
+def get_synthetic_dataset(
+    id_path, target_path, recompute_dataset, problem_graphs, no_training_samples, max_workers
+):
     if recompute_dataset or not (os.path.exists(id_path) and os.path.exists(target_path)):
         print(f"# Computing new dataset of size {no_training_samples}")
-        graph_idx, targets = compute_dataset(
+        graph_idx, targets = compute_synthetic_dataset(
             problem_graphs,
             no_training_samples,
             id_path,
@@ -360,7 +381,7 @@ def get_dataset(id_path, target_path, recompute_dataset, problem_graphs, no_trai
         )
     else:
         print("# Loading existing dataset")
-        graph_idx, targets = load_dataset(id_path, target_path)
+        graph_idx, targets = load_synthetic_dataset(id_path, target_path)
     return graph_idx, targets
 
 
@@ -410,13 +431,13 @@ def main():
 
     # Check working direcotry for storing models, datasets and embeddings
     train_work_dir = get_working_directory(args.train_id_file, args.no_training_samples)
-    # Load training dat
+    # Load training data
     train_problem_graphs, train_problem_names = get_graph_dataset(args.train_id_file, args.problem_dir)
 
     # If flag is set to recompute dataset or the appropriate files do not exist, we recompute the dataset
     train_id_path = os.path.join(train_work_dir, IDX_BASE_NAME)
     train_target_path = os.path.join(train_work_dir, TARGET_BASE_NAME)
-    train_graph_idx, train_targets = get_dataset(
+    train_graph_idx, train_targets = get_synthetic_dataset(
         train_id_path,
         train_target_path,
         args.recompute_dataset,
@@ -425,10 +446,10 @@ def main():
         args.max_workers,
     )
 
-    #  Scale the targets
+    # Scale the targets
     train_graph_idx, train_targets = process_dataset(train_graph_idx, train_targets)
 
-    # Get the graph generator
+    # Get the graph generator - TODO should make a generic generator! and place it on the top
     train_graph_generator = get_graph_generator(train_problem_graphs)
 
     # Get the name of the appropriate model dir
@@ -438,6 +459,8 @@ def main():
     embedding_model, pair_model = get_models(
         model_dir, args.retrain, train_graph_generator, train_graph_idx, train_targets, args.epochs
     )
+
+    # TODO looks like I might only need one graph generator?
 
     if args.evaluate:
         # Create pair model if it doesnt exist due to loading existing embedding model
@@ -454,7 +477,7 @@ def main():
         val_graph_generator = get_graph_generator(val_problem_graphs)
 
         # Get the validation data set
-        val_graph_idx, val_targets = get_dataset(
+        val_graph_idx, val_targets = get_synthetic_dataset(
             val_id_path,
             val_target_path,
             args.recompute_dataset,
@@ -462,6 +485,8 @@ def main():
             args.no_validation_samples,
             args.max_workers,
         )
+        #  Scale the targets
+        train_graph_idx, train_targets = process_dataset(train_graph_idx, train_targets)
 
         print("Evaluating pair model on the training set")
         evaluate_pair_model(pair_model, train_graph_generator, train_graph_idx, train_targets)
@@ -481,6 +506,8 @@ def main():
         # Load all the graph data
         print("Load deepmath data")
         deepmath_problem_graphs, deepmath_problem_names = get_graph_dataset("deepmath.txt", args.problem_dir)
+
+        # TODO SIGNLE GENERATOR!
         deepmath_graph_generator = get_graph_generator(deepmath_problem_graphs)
 
         embed_problems(
