@@ -75,6 +75,13 @@ parser.add_argument(
     action="store_true",
     help="Evaluate the model on the training and validation set",
 )
+parser.add_argument(
+    "--model_layers",
+    nargs="+",
+    type=int,
+    default=[64, 32],
+    help="Supply the size and number of model layers as a list",
+)
 
 
 # For the different axiom types we manually create an embedding layer for mapping
@@ -176,11 +183,11 @@ def get_graph_generator(graphs):
     return sg.mapper.PaddedGraphGenerator(graphs)
 
 
-def initialise_embedding_model(generator):
+def initialise_embedding_model(generator, model_layers):
 
     # Create model with identity as the pooling layer, we perform pooling outside this model
     gc_model = sg.layer.GCNSupervisedGraphClassification(
-        [64, 32], ["relu", "relu"], generator, pool_all_layers=False, pooling=Layer()
+        model_layers, ["relu"] * len(model_layers), generator, pool_all_layers=False, pooling=Layer()
     )
     inp1, out1 = gc_model.in_out_tensors()
     embedding_model = keras.Model(inp1, out1)
@@ -383,13 +390,17 @@ def get_synthetic_dataset(
     return graph_idx, targets
 
 
-def get_models(model_dir, retrain, graph_generator, graph_idx, targets, epochs):
+def get_models(work_dir, model_layers, retrain, graph_generator, graph_idx, targets, epochs):
+
+    # Get the name of the appropriate model dir
+    model_dir = os.path.join(work_dir, MODEL_DIR_BASE_NAME)
+    model_dir = model_dir + "_" + "_".join(str(layer) for layer in model_layers)
 
     # Initialise pair_model as false as we are only initialising it if training the model
     pair_model = None
     if retrain or not os.path.exists(model_dir):
         # Initialise the embedding and pair model
-        embedding_model = initialise_embedding_model(graph_generator)
+        embedding_model = initialise_embedding_model(graph_generator, model_layers)
         pair_model = get_pair_model(graph_generator, embedding_model)
 
         # Train the pair model
@@ -400,7 +411,7 @@ def get_models(model_dir, retrain, graph_generator, graph_idx, targets, epochs):
         print("Saving the embedding model to ", model_dir)
         embedding_model.save(model_dir)
     else:
-        print("Loading existing model")
+        print("Loading existing model: ", model_dir)
         embedding_model = keras.models.load_model(model_dir)
 
     return embedding_model, pair_model
@@ -450,12 +461,15 @@ def main():
     # Get the graph generator
     graph_generator = get_graph_generator(train_problem_graphs)
 
-    # Get the name of the appropriate model dir
-    model_dir = os.path.join(train_work_dir, MODEL_DIR_BASE_NAME)
-
     # Get the models and train the embedding model if retraining flag is set or it does not already exist
     embedding_model, pair_model = get_models(
-        model_dir, args.retrain, graph_generator, train_graph_idx, train_targets, args.epochs
+        train_work_dir,
+        args.model_layers,
+        args.retrain,
+        graph_generator,
+        train_graph_idx,
+        train_targets,
+        args.epochs,
     )
 
     if args.evaluate:
