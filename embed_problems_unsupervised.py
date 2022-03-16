@@ -40,10 +40,10 @@ parser.add_argument(
     "--val_id_file", default="validation.txt", help="Name of the file containing the training data in raw/"
 )
 
-if socket.gethostname() == "puppet":
-    default_problem_dir = "/shareddata/home/holden/gnn-entailment-caption/"
-else:
+if socket.gethostname() == "kontor":
     default_problem_dir = "/home/eholden/gnn-entailment-caption/"
+else:
+    default_problem_dir = "/shareddata/home/holden/gnn-entailment-caption/"
 parser.add_argument(
     "--problem_dir", default=default_problem_dir, help="Path to the nndata problems"
 )
