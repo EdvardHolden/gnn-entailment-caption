@@ -44,16 +44,15 @@ parser.add_argument(
     "--max_workers", type=int, default=5, help="Max number of workers to use when computing graph targets"
 )
 
-# TODO add model types as well?
 parser.add_argument(
     "--no_training_samples",
-    default=6000,
+    default=1100,
     type=int,
     help="Number of training pair-samples to compute from the training set",
 )
 parser.add_argument(
     "--no_validation_samples",
-    default=2000,
+    default=1200,
     type=int,
     help="Number of validation pair-samples to compute from the training set",
 )
@@ -83,6 +82,9 @@ parser.add_argument(
     help="Supply the size and number of model layers as a list",
 )
 
+
+# Initialise early stopping
+es = tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=3)
 
 # For the different axiom types we manually create an embedding layer for mapping
 # the types to the embedding space. This creates or loads and existing embedding layer
@@ -176,7 +178,10 @@ def get_graph_dataset(id_file, problem_dir, embed_nodes=True):
     )
     print(summary.describe().round(1))
 
-    return graphs, problems
+    # Get the graph generator for the training graphs
+    graph_generator = get_graph_generator(graphs)
+
+    return graphs, problems, graph_generator
 
 
 def get_graph_generator(graphs):
@@ -186,6 +191,7 @@ def get_graph_generator(graphs):
 def initialise_embedding_model(generator, model_layers):
 
     # Create model with identity as the pooling layer, we perform pooling outside this model
+    print("Initialising embedding model: ", "_".join(str(layer) for layer in model_layers))
     gc_model = sg.layer.GCNSupervisedGraphClassification(
         model_layers, ["relu"] * len(model_layers), generator, pool_all_layers=False, pooling=Layer()
     )
@@ -240,15 +246,26 @@ def compute_synthetic_dataset(graphs, no_training_samples, id_file_name, target_
     return graph_idx, targets
 
 
-def train_pair_model(pair_model, generator, graph_idx, targets, epochs):
+def train_pair_model(
+    pair_model,
+    train_generator,
+    train_graph_idx,
+    train_targets,
+    val_generator,
+    val_graph_idx,
+    val_targets,
+    epochs,
+):
 
-    train_gen = generator.flow(graph_idx, batch_size=BATCH_SIZE, targets=targets)
+    # How is this validation generator actually utilised? - How does it get my problems??
+    train_gen = train_generator.flow(train_graph_idx, batch_size=BATCH_SIZE, targets=val_targets)
+    val_gen = val_generator.flow(val_graph_idx, batch_size=BATCH_SIZE, targets=val_targets)
 
     # Train the model
-    print("Training the model")
     pair_model.compile(keras.optimizers.Adam(1e-2), loss="mse")
-    history = pair_model.fit(train_gen, epochs=epochs, verbose=1)
-    sg.utils.plot_history(history)
+    history = pair_model.fit(train_gen, validation_data=val_gen, epochs=epochs, verbose=1, callbacks=[es])
+    print(history.history)
+    return history.history
 
 
 def embed_graphs(file_name, embedding_model, generator, problems, graphs):
@@ -367,14 +384,16 @@ def evaluate_pair_model(pair_model, generator, graph_idx, targets):
     train_gen = generator.flow(graph_idx, batch_size=BATCH_SIZE, targets=targets)
     pair_model.compile(keras.optimizers.Adam(1e-2), loss="mse")
 
-    score = pair_model.evaluate(train_gen, verbose=1)
+    score = pair_model.evaluate(train_gen, verbose=0)
     print(f"MSE: {score:.2f}")
     return score
 
 
-def get_synthetic_dataset(
-    id_path, target_path, recompute_dataset, problem_graphs, no_training_samples, max_workers
-):
+def get_synthetic_dataset(work_dir, recompute_dataset, problem_graphs, no_training_samples, max_workers):
+
+    # Get the appropriate paths
+    id_path, target_path = get_dataset_paths(work_dir)
+
     if recompute_dataset or not (os.path.exists(id_path) and os.path.exists(target_path)):
         print(f"# Computing new dataset of size {no_training_samples}")
         graph_idx, targets = compute_synthetic_dataset(
@@ -387,29 +406,56 @@ def get_synthetic_dataset(
     else:
         print("# Loading existing dataset")
         graph_idx, targets = load_synthetic_dataset(id_path, target_path)
+
+    # Scale the targets
+    graph_idx, targets = process_dataset(graph_idx, targets)
+
     return graph_idx, targets
 
 
-def get_models(work_dir, model_layers, retrain, graph_generator, graph_idx, targets, epochs):
+def get_models(
+    work_dir,
+    model_layers,
+    retrain,
+    train_graph_generator,
+    train_synthetic_idx,
+    train_synthetic_targets,
+    val_graph_generator,
+    val_synthetic_idx,
+    val_synthetic_targets,
+    epochs,
+):
 
     # Get the name of the appropriate model dir
     model_dir = os.path.join(work_dir, MODEL_DIR_BASE_NAME)
+    # Include the layer dimensions into the model name
     model_dir = model_dir + "_" + "_".join(str(layer) for layer in model_layers)
 
-    # Initialise pair_model as false as we are only initialising it if training the model
-    pair_model = None
+    # Initialise and train a new embedding model
+    pair_model = None  # Only create the pair model if we have to train the embedding model
     if retrain or not os.path.exists(model_dir):
         # Initialise the embedding and pair model
-        embedding_model = initialise_embedding_model(graph_generator, model_layers)
-        pair_model = get_pair_model(graph_generator, embedding_model)
+        embedding_model = initialise_embedding_model(train_graph_generator, model_layers)
+        pair_model = get_pair_model(train_graph_generator, embedding_model)
 
         # Train the pair model
         print("Training embedding model on the pair dataset")
-        train_pair_model(pair_model, graph_generator, graph_idx, targets, epochs)
+        history = train_pair_model(
+            pair_model,
+            train_graph_generator,
+            train_synthetic_idx,
+            train_synthetic_targets,
+            val_graph_generator,
+            val_synthetic_idx,
+            val_synthetic_targets,
+            epochs,
+        )
 
         # Save the embedding model
         print("Saving the embedding model to ", model_dir)
         embedding_model.save(model_dir)
+        with open(os.path.join(model_dir, "history.pkl"), "wb") as f:
+            pickle.dump(history, f)
     else:
         print("Loading existing model: ", model_dir)
         embedding_model = keras.models.load_model(model_dir)
@@ -438,73 +484,81 @@ def main():
     # Get arguments
     args = parser.parse_args()
 
-    # Check working direcotry for storing models, datasets and embeddings
+    # Check working direcotry for storing models, training datasets and embeddings
     train_work_dir = get_working_directory(args.train_id_file, args.no_training_samples)
-    # Load training data
-    train_problem_graphs, train_problem_names = get_graph_dataset(args.train_id_file, args.problem_dir)
 
-    # If flag is set to recompute dataset or the appropriate files do not exist, we recompute the dataset
-    train_id_path = os.path.join(train_work_dir, IDX_BASE_NAME)
-    train_target_path = os.path.join(train_work_dir, TARGET_BASE_NAME)
-    train_graph_idx, train_targets = get_synthetic_dataset(
-        train_id_path,
-        train_target_path,
+    # Load training graphs
+    train_problem_graphs, train_problem_names, train_graph_generator = get_graph_dataset(
+        args.train_id_file, args.problem_dir
+    )
+
+    # Get the synthetic training data set - will be computed if it doesnt already exist
+    train_synthetic_idx, train_synthetic_targets = get_synthetic_dataset(
+        train_work_dir,
         args.recompute_dataset,
         train_problem_graphs,
         args.no_training_samples,
         args.max_workers,
     )
 
-    # Scale the targets
-    train_graph_idx, train_targets = process_dataset(train_graph_idx, train_targets)
+    # TODO do not want to load all of the validation stuff if we are not validating and not training
+    # Get working director for the valdiation data
+    val_work_dir = get_working_directory(args.val_id_file, args.no_validation_samples)
 
-    # Get the graph generator
-    graph_generator = get_graph_generator(train_problem_graphs)
+    # Load validation graphs
+    val_problem_graphs, val_problem_names, val_graph_generator = get_graph_dataset(
+        args.val_id_file, args.problem_dir
+    )
+
+    # Get the synthetic validation data set
+    val_synthetic_idx, val_synthetic_targets = get_synthetic_dataset(
+        val_work_dir,
+        args.recompute_dataset,
+        val_problem_graphs,
+        args.no_validation_samples,
+        args.max_workers,
+    )
 
     # Get the models and train the embedding model if retraining flag is set or it does not already exist
     embedding_model, pair_model = get_models(
         train_work_dir,
         args.model_layers,
         args.retrain,
-        graph_generator,
-        train_graph_idx,
-        train_targets,
+        train_graph_generator,
+        train_synthetic_idx,
+        train_synthetic_targets,
+        train_graph_generator,
+        val_synthetic_idx,
+        val_synthetic_targets,
         args.epochs,
     )
 
     if args.evaluate:
         # Create pair model if it doesnt exist due to loading existing embedding model
         if pair_model is None:
-            pair_model = get_pair_model(graph_generator, embedding_model)
-
-        # Validation data: If flag is set to recompute dataset or the appropriate files do not exist, we recompute the dataset
-        val_work_dir = get_working_directory(args.val_id_file, args.no_validation_samples)
-        val_id_path, val_target_path = get_dataset_paths(val_work_dir)
-
-        # Load validation data
-        val_problem_graphs, val_problem_names = get_graph_dataset(args.val_id_file, args.problem_dir)
-
-        # Get the validation data set
-        val_graph_idx, val_targets = get_synthetic_dataset(
-            val_id_path,
-            val_target_path,
-            args.recompute_dataset,
-            val_problem_graphs,
-            args.no_validation_samples,
-            args.max_workers,
-        )
-        #  Scale the targets
-        train_graph_idx, train_targets = process_dataset(train_graph_idx, train_targets)
+            pair_model = get_pair_model(train_graph_generator, embedding_model)
 
         print("Evaluating pair model on the training set")
-        evaluate_pair_model(pair_model, graph_generator, train_graph_idx, train_targets)
+        evaluate_pair_model(pair_model, train_graph_generator, train_synthetic_idx, train_synthetic_targets)
         print("Evaluating pair model on the validation set")
-        evaluate_pair_model(pair_model, graph_generator, val_graph_idx, val_targets)
+        evaluate_pair_model(pair_model, val_graph_generator, val_synthetic_idx, val_synthetic_targets)
 
     # DELETE the previous data sets to free up memory
-    del train_problem_graphs, train_problem_names, train_graph_idx, train_targets
+    del (
+        train_problem_graphs,
+        train_problem_names,
+        train_synthetic_idx,
+        train_synthetic_targets,
+        train_graph_generator,
+    )
     try:
-        del val_problem_graphs, val_problem_names, val_graph_idx, val_targets
+        del (
+            val_problem_graphs,
+            val_problem_names,
+            val_synthetic_idx,
+            val_synthetic_targets,
+            val_graph_generator,
+        )
     except NameError:
         pass
 
@@ -513,12 +567,14 @@ def main():
         # Get the data of deepmath - want to embed all the problems
         # Load all the graph data
         print("Load deepmath data")
-        deepmath_problem_graphs, deepmath_problem_names = get_graph_dataset("deepmath.txt", args.problem_dir)
+        deepmath_problem_graphs, deepmath_problem_names, deepmath_graph_generator = get_graph_dataset(
+            "deepmath.txt", args.problem_dir
+        )
 
         # Embed the problem graphs and save the result
         embed_problems(
             embedding_model,
-            graph_generator,
+            deepmath_graph_generator,
             deepmath_problem_names,
             deepmath_problem_graphs,
             train_work_dir,  # Use context parameters as file infix
