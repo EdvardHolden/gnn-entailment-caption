@@ -46,7 +46,7 @@ parser.add_argument(
 
 parser.add_argument(
     "--no_training_samples",
-    default=1100,
+    default=12000,
     type=int,
     help="Number of training pair-samples to compute from the training set",
 )
@@ -59,10 +59,16 @@ parser.add_argument(
 
 parser.add_argument("--epochs", default=200, type=int, help="The number of epochs to train the model for")
 parser.add_argument(
-    "--recompute_dataset",
+    "--recompute_train_dataset",
     default=False,
     action="store_true",
-    help="If set we recompute the graph dataset for the given parameters",
+    help="If set we recompute the synthetic training dataset for the given parameters",
+)
+parser.add_argument(
+    "--recompute_val_dataset",
+    default=False,
+    action="store_true",
+    help="If set we recompute the synthetic validation dataset for the given parameters",
 )
 parser.add_argument("--retrain", default=False, action="store_true", help="Retrain existing model")
 parser.add_argument(
@@ -257,8 +263,8 @@ def train_pair_model(
     epochs,
 ):
 
-    # How is this validation generator actually utilised? - How does it get my problems??
-    train_gen = train_generator.flow(train_graph_idx, batch_size=BATCH_SIZE, targets=val_targets)
+    # Get the appropriate generators
+    train_gen = train_generator.flow(train_graph_idx, batch_size=BATCH_SIZE, targets=train_targets)
     val_gen = val_generator.flow(val_graph_idx, batch_size=BATCH_SIZE, targets=val_targets)
 
     # Train the model
@@ -389,16 +395,16 @@ def evaluate_pair_model(pair_model, generator, graph_idx, targets):
     return score
 
 
-def get_synthetic_dataset(work_dir, recompute_dataset, problem_graphs, no_training_samples, max_workers):
+def get_synthetic_dataset(work_dir, recompute_dataset, problem_graphs, no_samples, max_workers):
 
     # Get the appropriate paths
     id_path, target_path = get_dataset_paths(work_dir)
 
     if recompute_dataset or not (os.path.exists(id_path) and os.path.exists(target_path)):
-        print(f"# Computing new dataset of size {no_training_samples}")
+        print(f"# Computing new dataset of size {no_samples}")
         graph_idx, targets = compute_synthetic_dataset(
             problem_graphs,
-            no_training_samples,
+            no_samples,
             id_path,
             target_path,
             max_workers=max_workers,
@@ -409,6 +415,11 @@ def get_synthetic_dataset(work_dir, recompute_dataset, problem_graphs, no_traini
 
     # Scale the targets
     graph_idx, targets = process_dataset(graph_idx, targets)
+
+    # Ensure that we have the expected number of samples
+    assert (
+        len(graph_idx) == no_samples and len(targets) == no_samples
+    ), "Mismatching number of samples in the isynthetic directory. Should recompute the dataset"
 
     return graph_idx, targets
 
@@ -495,7 +506,7 @@ def main():
     # Get the synthetic training data set - will be computed if it doesnt already exist
     train_synthetic_idx, train_synthetic_targets = get_synthetic_dataset(
         train_work_dir,
-        args.recompute_dataset,
+        args.recompute_train_dataset,
         train_problem_graphs,
         args.no_training_samples,
         args.max_workers,
@@ -513,7 +524,7 @@ def main():
     # Get the synthetic validation data set
     val_synthetic_idx, val_synthetic_targets = get_synthetic_dataset(
         val_work_dir,
-        args.recompute_dataset,
+        args.recompute_val_dataset,
         val_problem_graphs,
         args.no_validation_samples,
         args.max_workers,
