@@ -9,6 +9,8 @@ from tensorflow import keras
 from tensorflow.keras.layers import Embedding, Input, Layer, GlobalAveragePooling1D
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
+import socket
+
 
 physical_devices = tf.config.list_physical_devices("GPU")
 for device in physical_devices:
@@ -37,8 +39,13 @@ parser.add_argument(
 parser.add_argument(
     "--val_id_file", default="validation.txt", help="Name of the file containing the training data in raw/"
 )
+
+if socket.gethostname() == "puppet":
+    default_problem_dir = "/shareddata/home/holden/gnn-entailment-caption/"
+else:
+    default_problem_dir = "/home/eholden/gnn-entailment-caption/"
 parser.add_argument(
-    "--problem_dir", default="/home/eholden/gnn-entailment-caption/", help="Path to the nndata problems"
+    "--problem_dir", default=default_problem_dir, help="Path to the nndata problems"
 )
 parser.add_argument(
     "--max_workers", type=int, default=5, help="Max number of workers to use when computing graph targets"
