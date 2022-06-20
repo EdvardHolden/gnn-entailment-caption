@@ -16,12 +16,16 @@ Comptuing the graphs will take less than 10 minutes for about 7K problems.
 There will be a tgraph datapoint (*.pt file) created for each problem which will be stored in 'graph_data/{name_of_id_file}/processed/'.
 
 
-## Compute problem embeddings
+## Compute Supervised problem embeddings
 
-To compute the problem embeddings we run the script 'extract features' which computes the feature vector for each problem.
-The set of feature vectors are stored in 'graph_features.pkl'. This might have to be changed for very large datasets.
+To compute the problem embeddings we run the script 'extract_features.py' which computes the feature vector for each problem, with the help of the model in 'model.pt'
+The set of feature vectors are stored in 'graph_features_*.pkl'. This might have to be changed for very large datasets.
 
 
-## Future
-Add unsupervised graph training to the mix.
-Might also create an option which uses only the conjecture nodes in the embedding.
+
+## Compute Unsupervised problem embeddings
+
+To compute unsupervised embeddings, run the script 'embed_problems_unsupervised.py'.
+It may use pre computed datasets and model, depending on the parameters given and what is available.
+Will automatically compute embeddings for all, premise and conjecture pooling configurations.
+the result is saved as 'embedding_unsupervised_*.pkl'
