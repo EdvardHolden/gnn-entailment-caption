@@ -19,7 +19,7 @@ parser.add_argument(
     help="The type of nodes to use in the final embedding",
 )
 parser.add_argument("--model_path", default="model.pt", help="Path to the model used for embedding")
-parser.add_argument("--id_file", default="jjt_fof_sine_1_0.txt", help="Name of the ID file found in raw/")
+parser.add_argument("--id_file", default="deepmath.txt", help="Name of the ID file found in raw/")
 parser.add_argument(
     "--print_distances",
     action="store_true",
@@ -96,7 +96,10 @@ def main():
 
     # Get set of problems
     if args.library == "tptp":
-        data = mk_loader_ltb("graph_data", args.id_file, batch_size=1, shuffle=False)
+        #data = mk_loader_ltb("graph_data", args.id_file, batch_size=1, shuffle=False)
+        print("HERE")
+        #data = mk_loader_ltb("graph_data", args.id_file, caption='/shareddata/home/holden/axiom_caption/generated_problems/mizar_40/sine_1_1/', batch_size=1, shuffle=False)
+        data = mk_loader_ltb("graph_data", args.id_file, caption='/shareddata/home/holden/axiom_caption/generated_problems/mizar_40/sine_1_1/', batch_size=1, shuffle=False)
     else:
         # data = mk_loader("graph_data", args.id_file, batch_size=1, shuffle=False)
         data = mk_loader(Path(__file__).parent, args.id_file, batch_size=1, shuffle=False)
@@ -115,8 +118,9 @@ def main():
 
     # Save to path
 
+    # TODO
     res_path = os.path.join(
-        "embeddings", "graph_features_" + Path(args.id_file).stem + "_" + args.nodes + ".pkl"
+        "embeddings", "graph_features_mizar_merged_sine_1_1" + Path(args.id_file).stem + "_" + args.nodes + ".pkl"
     )
     dump(embeddings, open(res_path, "wb"))
 

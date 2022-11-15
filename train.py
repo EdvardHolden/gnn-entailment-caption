@@ -59,7 +59,7 @@ def train():
         val_loss = validation_loss(model, validation)
         stats.report_validation_loss(val_loss)
         if val_loss < best_loss:
-            torch.save(model.state_dict(), 'model.pt')
+            torch.save(model.state_dict(), 'model_gnn.pt')
             best_loss = val_loss
         print(f"...done, loss {val_loss:.3E}")
 

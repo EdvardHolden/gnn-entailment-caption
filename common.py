@@ -20,8 +20,8 @@ def mk_loader(root, name, batch_size=BATCH_SIZE, shuffle=True, **kwargs):
     )
 
 
-def mk_loader_ltb(root, name, batch_size=BATCH_SIZE, shuffle=True, **kwargs):
-    dataset = LTBDataset(root, name=name)
+def mk_loader_ltb(root, name, caption=None, batch_size=BATCH_SIZE, shuffle=True, **kwargs):
+    dataset = LTBDataset(root, name=name, caption=caption)
     print(dataset)
     return DataLoader(
         dataset,

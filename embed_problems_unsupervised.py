@@ -44,9 +44,7 @@ if socket.gethostname() == "kontor":
     default_problem_dir = "/home/eholden/gnn-entailment-caption/"
 else:
     default_problem_dir = "/shareddata/home/holden/gnn-entailment-caption/"
-parser.add_argument(
-    "--problem_dir", default=default_problem_dir, help="Path to the nndata problems"
-)
+parser.add_argument("--problem_dir", default=default_problem_dir, help="Path to the nndata problems")
 parser.add_argument(
     "--max_workers", type=int, default=5, help="Max number of workers to use when computing graph targets"
 )
@@ -376,6 +374,7 @@ def embed_problems(embedding_model, generator, problem_names, problem_graphs, wo
 
 
 def process_dataset(idx, targets):
+    # TODO this assumes we see the values first...
 
     # Transform to the correct 2d format for the scaler
     targets = np.array(targets).reshape(-1, 1)

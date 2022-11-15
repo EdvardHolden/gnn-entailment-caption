@@ -9,7 +9,7 @@ from model import Model
 import config
 from utils import read_problem_deepmath
 
-DEST = "generated_problems/"
+DEST = "generated_problems_merged_retry/"
 
 
 def predict_labels(model, batch):
@@ -29,6 +29,9 @@ def select_premises(model, data):
             # Get hold of original problem
             conj, premises, _ = read_problem_deepmath(prob_name, ".")
 
+            # Set conjecture properly
+            conj = [conj[0].replace(b"axiom", b"conjecture", 1)]
+
             # Filter based on labels
             premises = [prem.strip() for prem, pred in zip(premises, predictions) if pred]
 
@@ -46,7 +49,8 @@ def eval():
 
     # Load dataset
     # data_ids = "single.txt"
-    data_ids = "dev_100.txt"
+    #data_ids = "deepmath.txt"
+    data_ids = "deepmath_merged.txt"
     data = mk_loader(Path(__file__).parent, data_ids, batch_size=1)
 
     # Laod and prepare model
@@ -56,6 +60,8 @@ def eval():
 
     # Run premise selection
     select_premises(model, data)
+
+    print("## FINISHED")
 
 
 if __name__ == "__main__":

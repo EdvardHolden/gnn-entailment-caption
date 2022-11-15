@@ -27,7 +27,8 @@ def accuracy(model, data):
 def eval():
     test = mk_loader(Path(__file__).parent, 'test.txt')
     model = Model(17).to(config.device)
-    model.load_state_dict(torch.load('model.pt'))
+    #model.load_state_dict(torch.load('model.pt'))
+    model.load_state_dict(torch.load('model_gnn.pt'))
     model.eval()
 
     test_acc = accuracy(model, test)
