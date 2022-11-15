@@ -49,7 +49,7 @@ def eval():
 
     # Load dataset
     # data_ids = "single.txt"
-    #data_ids = "deepmath.txt"
+    # data_ids = "deepmath.txt"
     data_ids = "deepmath_merged.txt"
     data = mk_loader(Path(__file__).parent, data_ids, batch_size=1)
 

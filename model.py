@@ -6,6 +6,7 @@ from torch_geometric import nn as geom
 LAYERS = 24
 K = 8
 
+
 class FullyConnectedLayer(Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
@@ -18,12 +19,13 @@ class FullyConnectedLayer(Module):
         x = self.linear(x)
         return x
 
+
 class ConvLayer(Module):
     def __init__(self):
         super().__init__()
         self.bn = BatchNorm1d(K)
         self.conv_in = geom.GCNConv(K, K)
-        self.conv_out = geom.GCNConv(K, K, flow='target_to_source')
+        self.conv_out = geom.GCNConv(K, K, flow="target_to_source")
 
     def forward(self, x, edge_index):
         x = relu(x)
@@ -33,17 +35,12 @@ class ConvLayer(Module):
         x = torch.cat((in_x, out_x), dim=1)
         return x
 
+
 class DenseBlock(Module):
     def __init__(self, layers):
         super().__init__()
-        self.fc = ModuleList([
-            FullyConnectedLayer(2 * K * (layer + 1), K)
-            for layer in range(layers)
-        ])
-        self.conv = ModuleList([
-            ConvLayer()
-            for _ in range(layers)
-        ])
+        self.fc = ModuleList([FullyConnectedLayer(2 * K * (layer + 1), K) for layer in range(layers)])
+        self.conv = ModuleList([ConvLayer() for _ in range(layers)])
 
     def forward(self, x, edge_index):
         outputs = [x]
@@ -55,6 +52,7 @@ class DenseBlock(Module):
 
         return torch.cat(outputs, dim=1)
 
+
 class GlobalPoolLayer(Module):
     def __init__(self, in_channels):
         super().__init__()
@@ -63,6 +61,7 @@ class GlobalPoolLayer(Module):
     def forward(self, x, batch):
         x = self.bn(x)
         return geom.global_mean_pool(x, batch)
+
 
 class Model(Module):
     def __init__(self, input_size):
@@ -89,6 +88,7 @@ class Model(Module):
 
 if __name__ == "__main__":
     from torchinfo import summary
+
     model = Model(17)
     summary(model)
     print()

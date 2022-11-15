@@ -12,6 +12,7 @@ from statistics import Writer
 
 import config
 
+
 def batch_loss(model, batch):
     batch = batch.to(config.device)
     y = model(batch)
@@ -19,37 +20,27 @@ def batch_loss(model, batch):
     del batch
     return (y, loss)
 
+
 def validation_loss(model, validation):
     losses = []
     with torch.no_grad():
         for batch in tqdm(validation):
-            _, loss =  batch_loss(model, batch)
+            _, loss = batch_loss(model, batch)
             losses.append(loss.mean())
 
     return torch.tensor(losses).mean()
 
+
 def train():
-    train = mk_loader(Path(__file__).parent, 'train.txt')
-    validation = mk_loader(Path(__file__).parent, 'validation.txt')
+    train = mk_loader(Path(__file__).parent, "train.txt")
+    validation = mk_loader(Path(__file__).parent, "validation.txt")
 
     model = Model(17).to(config.device)
-    optimizer = SGD(
-        model.parameters(),
-        lr=0.1,
-        momentum=0.9,
-        weight_decay=1e-4,
-        nesterov=True
-    )
-    scheduler = CyclicLR(optimizer,
-        0.01,
-        0.1,
-        mode='exp_range',
-        gamma=0.99995,
-        step_size_up=4000
-    )
+    optimizer = SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4, nesterov=True)
+    scheduler = CyclicLR(optimizer, 0.01, 0.1, mode="exp_range", gamma=0.99995, step_size_up=4000)
 
     stats = Writer(model)
-    best_loss = torch.tensor(float('inf'))
+    best_loss = torch.tensor(float("inf"))
 
     while True:
         stats.report_model_parameters()
@@ -59,7 +50,7 @@ def train():
         val_loss = validation_loss(model, validation)
         stats.report_validation_loss(val_loss)
         if val_loss < best_loss:
-            torch.save(model.state_dict(), 'model_gnn.pt')
+            torch.save(model.state_dict(), "model_gnn.pt")
             best_loss = val_loss
         print(f"...done, loss {val_loss:.3E}")
 
@@ -76,7 +67,8 @@ def train():
                 stats.report_output(batch.y, torch.sigmoid(y))
             stats.on_step()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     torch.manual_seed(0)
     try:
         train()

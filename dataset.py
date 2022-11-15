@@ -40,16 +40,19 @@ class DeepMathDataset(InMemoryDataset):
         with open(self.raw_paths[0], "r") as problems:
             for problem in tqdm(problems):
                 # Extract info from the problem
-                #conjecture, premises, target = read_problem_deepmath(problem, self.root) TODO
+                # conjecture, premises, target = read_problem_deepmath(problem, self.root) TODO
                 print(problem)
-                #conjecture, premises = read_problem_tptp(problem, 'merged_problems')
-                conjecture, premises = read_problem_tptp(problem, '/shareddata/home/holden/axiom_caption/generated_problems/analysis/output_original_unquoted_sine_1_1/')
+                # conjecture, premises = read_problem_tptp(problem, 'merged_problems')
+                conjecture, premises = read_problem_tptp(
+                    problem,
+                    "/shareddata/home/holden/axiom_caption/generated_problems/analysis/output_original_unquoted_sine_1_1/",
+                )
                 # Construct the data point
                 data = construct_graph(conjecture, premises)
                 # Add problem name
                 data.name = problem.strip()
                 # Add targets
-                #data.y = torch.tensor(target) TODO
+                # data.y = torch.tensor(target) TODO
                 # Append the final datapoint to the data list
                 data_list.append(data)
         data, slices = self.collate(data_list)
@@ -60,13 +63,13 @@ class DeepMathDataset(InMemoryDataset):
 class LTBDataset(Dataset):
     def __init__(self, root, name, caption=None, transform=None, pre_transform=None):
 
-        print('root ', root)
+        print("root ", root)
         root = os.path.join(root, name.split(".")[0])  # Make a separate folder for this data
-        print('root ', root)
+        print("root ", root)
         self.root = root
         self.name = name
         self.caption = caption
-        print('CAPTION ', caption)
+        print("CAPTION ", caption)
 
         # Load problem ids
         with open("raw/" + self.name, "r") as problems:
@@ -95,14 +98,13 @@ class LTBDataset(Dataset):
 
     def process(self):
 
-
-        print('processed_dir ', self.processed_dir)
-        print('caption ', self.caption)
-        #print(self.problems)
+        print("processed_dir ", self.processed_dir)
+        print("caption ", self.caption)
+        # print(self.problems)
 
         for problem in tqdm(self.problems):
             # Read the problem caption
-            print('pre read: problem ', problem)
+            print("pre read: problem ", problem)
             conjecture, axioms = read_problem_tptp(problem, self.caption)
             # Construct the data point
             data = construct_graph(conjecture, axioms)

@@ -96,10 +96,16 @@ def main():
 
     # Get set of problems
     if args.library == "tptp":
-        #data = mk_loader_ltb("graph_data", args.id_file, batch_size=1, shuffle=False)
+        # data = mk_loader_ltb("graph_data", args.id_file, batch_size=1, shuffle=False)
         print("HERE")
-        #data = mk_loader_ltb("graph_data", args.id_file, caption='/shareddata/home/holden/axiom_caption/generated_problems/mizar_40/sine_1_1/', batch_size=1, shuffle=False)
-        data = mk_loader_ltb("graph_data", args.id_file, caption='/shareddata/home/holden/axiom_caption/generated_problems/mizar_40/sine_1_1/', batch_size=1, shuffle=False)
+        # data = mk_loader_ltb("graph_data", args.id_file, caption='/shareddata/home/holden/axiom_caption/generated_problems/mizar_40/sine_1_1/', batch_size=1, shuffle=False)
+        data = mk_loader_ltb(
+            "graph_data",
+            args.id_file,
+            caption="/shareddata/home/holden/axiom_caption/generated_problems/mizar_40/sine_1_1/",
+            batch_size=1,
+            shuffle=False,
+        )
     else:
         # data = mk_loader("graph_data", args.id_file, batch_size=1, shuffle=False)
         data = mk_loader(Path(__file__).parent, args.id_file, batch_size=1, shuffle=False)
@@ -120,7 +126,8 @@ def main():
 
     # TODO
     res_path = os.path.join(
-        "embeddings", "graph_features_mizar_merged_sine_1_1" + Path(args.id_file).stem + "_" + args.nodes + ".pkl"
+        "embeddings",
+        "graph_features_mizar_merged_sine_1_1" + Path(args.id_file).stem + "_" + args.nodes + ".pkl",
     )
     dump(embeddings, open(res_path, "wb"))
 

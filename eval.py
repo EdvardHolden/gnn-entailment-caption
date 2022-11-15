@@ -10,6 +10,7 @@ from model import Model
 
 import config
 
+
 def accuracy(model, data):
     total = 0
     correct = 0
@@ -24,16 +25,18 @@ def accuracy(model, data):
 
     return 100 * (correct / total)
 
+
 def eval():
-    test = mk_loader(Path(__file__).parent, 'test.txt')
+    test = mk_loader(Path(__file__).parent, "test.txt")
     model = Model(17).to(config.device)
-    #model.load_state_dict(torch.load('model.pt'))
-    model.load_state_dict(torch.load('model_gnn.pt'))
+    # model.load_state_dict(torch.load('model.pt'))
+    model.load_state_dict(torch.load("model_gnn.pt"))
     model.eval()
 
     test_acc = accuracy(model, test)
     print(f"test:\t{test_acc:.1f}%")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     torch.manual_seed(0)
     eval()

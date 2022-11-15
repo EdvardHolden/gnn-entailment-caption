@@ -3,15 +3,15 @@ from sklearn.model_selection import train_test_split
 
 
 def save_set(ids, name):
-    with open('raw/' + name + '.txt', 'w') as f:
-        f.write('\n'.join(ids))
+    with open("raw/" + name + ".txt", "w") as f:
+        f.write("\n".join(ids))
 
 
 def main():
     # Get all the problem names
-    files = glob('nndata/*')
+    files = glob("nndata/*")
     # Remove folder name
-    files = [f.split('/')[1] for f in files]
+    files = [f.split("/")[1] for f in files]
     print("Number or of problems: ", len(files))
 
     # Split into train and test
@@ -24,9 +24,9 @@ def main():
     print("Length of val:   ", len(val))
     print("Length of test:  ", len(test))
 
-    save_set(train, 'train')
-    save_set(val, 'validation')
-    save_set(test, 'test')
+    save_set(train, "train")
+    save_set(val, "validation")
+    save_set(test, "test")
 
 
 if __name__ == "__main__":
