@@ -86,7 +86,7 @@ class Model(Module):
         return x
 
 
-if __name__ == "__main__":
+def main():
     from torchinfo import summary
 
     model = Model(17)
@@ -94,3 +94,7 @@ if __name__ == "__main__":
     print()
     print()
     print(model)
+
+
+if __name__ == "__main__":
+    main()
