@@ -5,3 +5,4 @@ from pathlib import Path
 device = "cpu"
 
 BENCHMARK_PATHS = {"deepmath": Path(__file__).parent / "nndata"}
+BATCH_SIZE = 64

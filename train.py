@@ -6,7 +6,7 @@ from torch.optim import SGD
 from torch.optim.lr_scheduler import CyclicLR
 from tqdm import tqdm
 
-from common import mk_loader
+from dataset import get_data_loader
 from model import Model
 from statistics import Writer
 
@@ -32,8 +32,8 @@ def validation_loss(model, validation):
 
 
 def train():
-    train = mk_loader(Path(__file__).parent, "train.txt")
-    validation = mk_loader(Path(__file__).parent, "validation.txt")
+    train = get_data_loader(Path(__file__).parent, "train.txt")
+    validation = get_data_loader(Path(__file__).parent, "validation.txt")
 
     model = Model(17).to(config.device)
     optimizer = SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4, nesterov=True)

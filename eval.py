@@ -5,7 +5,7 @@ from torch.nn.functional import binary_cross_entropy_with_logits
 from torch_geometric.data import Batch
 from tqdm import tqdm
 
-from common import mk_loader
+from dataset import get_data_loader
 from model import Model
 
 import config
@@ -27,7 +27,7 @@ def accuracy(model, data):
 
 
 def eval():
-    test = mk_loader(Path(__file__).parent, "test.txt")
+    test = get_data_loader(Path(__file__).parent, "test.txt")
     model = Model(17).to(config.device)
     # model.load_state_dict(torch.load('model.pt'))
     model.load_state_dict(torch.load("model_gnn.pt"))

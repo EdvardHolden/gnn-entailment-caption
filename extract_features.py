@@ -8,7 +8,8 @@ import numpy as np
 import argparse
 
 from model import Model
-from common import mk_loader_ltb, mk_loader
+from common import mk_loader_ltb
+from dataset import get_data_loader
 import config
 
 parser = argparse.ArgumentParser()
@@ -108,7 +109,7 @@ def main():
         )
     else:
         # data = mk_loader("graph_data", args.id_file, batch_size=1, shuffle=False)
-        data = mk_loader(Path(__file__).parent, args.id_file, batch_size=1, shuffle=False)
+        data = get_data_loader(Path(__file__).parent, args.id_file, batch_size=1, shuffle=False)
 
     print("Number of problems: ", len(data))
 
