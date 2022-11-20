@@ -8,7 +8,7 @@ from enum import Enum
 
 import config
 from parser import graph
-from utils import read_problem_deepmath, read_problem_tptp
+from read_problem import read_problem_deepmath, read_problem_tptp
 
 
 def construct_graph(conjecture, premises):

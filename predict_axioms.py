@@ -7,7 +7,7 @@ from common import mk_loader
 from model import Model
 
 import config
-from utils import read_problem_deepmath
+from read_problem import read_problem_deepmath
 
 DEST = "generated_problems_merged_retry/"
 

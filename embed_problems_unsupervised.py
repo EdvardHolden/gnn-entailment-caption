@@ -24,7 +24,7 @@ import networkx as nx
 from tqdm.contrib.concurrent import process_map  # or thread_map
 
 from parser import graph
-from utils import read_problem_deepmath
+from read_problem import read_problem_deepmath
 
 # Base names and parameters
 IDX_BASE_NAME = "target.pkl"
