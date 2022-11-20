@@ -4,15 +4,14 @@ from torch_geometric.data import Data, InMemoryDataset, Dataset
 from tqdm import tqdm
 import os
 from typing import List
+from enum import Enum
 
 import config
 from parser import graph
 from utils import read_problem_deepmath, read_problem_tptp
 
 
-# TODO set mode Mizar vs deepmath
 
-# TODO what s the difference betweent these two?
 def construct_graph(conjecture, premises):
     nodes, sources, targets, premise_indices, conjecture_indices = graph(conjecture, premises)
     x = torch.tensor(nodes)
@@ -24,15 +23,21 @@ def construct_graph(conjecture, premises):
     return data
 
 
-# TODO need to add some sort split on deeptmath/merge here!
+class BenchmarkType(Enum):
+    DEEPMATH = 'deepmath'
+    TPTP = 'tptp'
+
+    def __str__(self):
+        return self.value
 
 
 class TorchDataset(InMemoryDataset):
-    def __init__(self, id_file, transform=None, pre_transform=None):
+    def __init__(self, id_file, benchmark_type, transform=None, pre_transform=None):
         self.root = Path(__file__).parent
         self.id_file = id_file
         self.id_partition = Path(id_file).stem
-        self.problem_dir = config.BENCHMARK_PATHS["deepmath"]
+        self.benchmark_type = benchmark_type
+        self.problem_dir = config.BENCHMARK_PATHS[str(benchmark_type)]
 
         # Load problem ids and store in list
         with open(self.id_file, "r") as problems:
@@ -55,11 +60,7 @@ class TorchDataset(InMemoryDataset):
         return [f"{self.id_partition}.pt"]
 
     def len(self) -> int:
-        return len(self.processed_file_names)
-
-    # Need to overwrite this function to operate on the problem names
-    def indices(self):
-        return self.processed_file_names
+        return len(self.raw_file_names)
 
     def get(self, idx):
         data = torch.load(os.path.join(self.processed_dir, idx))  # The ids are now the processed names
@@ -68,19 +69,22 @@ class TorchDataset(InMemoryDataset):
     def process(self):
         data_list = []
 
-        # TODO FIX!
         for problem in tqdm(self.raw_file_names):
-            # Extract info from the problem
-            # conjecture, premises, target = read_problem_deepmath(problem, self.root) TODO
-            # conjecture, premises = read_problem_tptp(problem, 'merged_problems')
-            # TODO change based on problem: also add path based on problem?
-            conjecture, premises = read_problem_tptp(problem, self.problem_dir)
+            target = None
+
+            # Read the problem
+            if self.benchmark_type is BenchmarkType.DEEPMATH:
+                conjecture, premises, target = read_problem_deepmath(self.problem_dir, problem)
+            elif self.benchmark_type is BenchmarkType.TPTP:
+                conjecture, premises = read_problem_tptp(self.problem_dir, problem)
+            else:
+                raise ValueError(f"Not implemented problem loader for benchmark {self.benchmark_type}")
+
             # Construct the data point
             data = construct_graph(conjecture, premises)
-            # Add problem name
-            data.name = problem.strip()
-            # Add targets
-            # data.y = torch.tensor(target)  # TODO
+            data.name = Path(problem).stem
+            if target is not None:
+                data.y = torch.tensor(target)
 
             # Append the final datapoint to the data list
             data_list.append(data)
@@ -196,8 +200,9 @@ class LTBDataset(Dataset):
 
 
 def test_dataset():
-    dataset = TorchDataset("id_files/dev_100.txt")
+    dataset = TorchDataset("id_files/dev_100.txt", BenchmarkType('deepmath'))
     print(dataset)
+    print(len(dataset))
 
 
 if __name__ == "__main__":

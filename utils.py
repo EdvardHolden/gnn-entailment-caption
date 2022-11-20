@@ -39,7 +39,7 @@ def _split_clauses(clauses):
     return conjecture, axioms
 
 
-def read_problem_tptp(problem, problem_dir):
+def read_problem_tptp(problem_dir, problem):
 
     # Extract the clauses from the problem
     clauses = _get_clauses(problem_dir, problem)
@@ -50,9 +50,10 @@ def read_problem_tptp(problem, problem_dir):
     return conjecture, axioms
 
 
-def read_problem_deepmath(problem, root):
-    path = Path(root) / "nndata" / problem.strip()
-    with open(path, "rb") as f:
+def read_problem_deepmath(problem_dir, problem_name):
+
+    with open(os.path.join(problem_dir, problem_name), "rb") as f:
+
         conjecture = next(f).strip()[2:]
 
         premises, targets = zip(
