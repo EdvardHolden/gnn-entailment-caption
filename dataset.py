@@ -1,6 +1,7 @@
 from pathlib import Path
 import torch
-from torch_geometric.data import Data, InMemoryDataset, Dataset
+from torch.utils.data import DataLoader
+from torch_geometric.data import Data, InMemoryDataset, Batch
 from tqdm import tqdm
 import os
 from typing import List
@@ -8,18 +9,8 @@ from enum import Enum
 
 import config
 from parser import graph
+
 from read_problem import read_problem_deepmath, read_problem_tptp
-
-
-def construct_graph(conjecture, premises):
-    nodes, sources, targets, premise_indices, conjecture_indices = graph(conjecture, premises)
-    x = torch.tensor(nodes)
-    edge_index = torch.tensor([sources, targets])
-    premise_index = torch.tensor(premise_indices)
-    conjecture_index = torch.tensor(conjecture_indices)
-
-    data = Data(x=x, edge_index=edge_index, premise_index=premise_index, conjecture_index=conjecture_index)
-    return data
 
 
 class BenchmarkType(Enum):
@@ -30,8 +21,19 @@ class BenchmarkType(Enum):
         return self.value
 
 
+def construct_graph(conjecture: List[str], premises: List[str]) -> Data:
+    nodes, sources, targets, premise_indices, conjecture_indices = graph(conjecture, premises)
+    x = torch.tensor(nodes)
+    edge_index = torch.tensor([sources, targets])
+    premise_index = torch.tensor(premise_indices)
+    conjecture_index = torch.tensor(conjecture_indices)
+
+    data = Data(x=x, edge_index=edge_index, premise_index=premise_index, conjecture_index=conjecture_index)
+    return data
+
+
 class TorchDataset(InMemoryDataset):
-    def __init__(self, id_file, benchmark_type, transform=None, pre_transform=None):
+    def __init__(self, id_file: str, benchmark_type: BenchmarkType, transform=None, pre_transform=None):
         self.root = Path(__file__).parent
         self.id_file = id_file
         self.id_partition = Path(id_file).stem
@@ -61,7 +63,7 @@ class TorchDataset(InMemoryDataset):
     def len(self) -> int:
         return len(self.raw_file_names)
 
-    def get(self, idx):
+    def get(self, idx) -> Data:
         data = torch.load(os.path.join(self.processed_dir, idx))  # The ids are now the processed names
         return data
 
@@ -99,12 +101,32 @@ class TorchDataset(InMemoryDataset):
         torch.save((data, slices), out)
 
 
+def get_data_loader(id_file, benchmark_type, batch_size=config.BATCH_SIZE, shuffle=True, **kwargs):
+    dataset = TorchDataset(id_file, benchmark_type)
+    print("Dataset:", dataset)
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        collate_fn=Batch.from_data_list,
+        shuffle=shuffle,
+        pin_memory=True,
+        num_workers=8,
+        **kwargs,
+    )
+
+
 def test_dataset():
     dataset = TorchDataset("id_files/dev_100.txt", BenchmarkType("deepmath"))
     print(dataset)
     print(len(dataset))
 
 
+def test_data_loader():
+    loader = get_data_loader("id_files/dev_100.txt", BenchmarkType("deepmath"))
+    print(loader)
+
+
 if __name__ == "__main__":
 
     test_dataset()
+    test_data_loader()
