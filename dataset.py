@@ -11,7 +11,6 @@ from parser import graph
 from utils import read_problem_deepmath, read_problem_tptp
 
 
-
 def construct_graph(conjecture, premises):
     nodes, sources, targets, premise_indices, conjecture_indices = graph(conjecture, premises)
     x = torch.tensor(nodes)
@@ -24,8 +23,8 @@ def construct_graph(conjecture, premises):
 
 
 class BenchmarkType(Enum):
-    DEEPMATH = 'deepmath'
-    TPTP = 'tptp'
+    DEEPMATH = "deepmath"
+    TPTP = "tptp"
 
     def __str__(self):
         return self.value
@@ -56,7 +55,7 @@ class TorchDataset(InMemoryDataset):
 
     @property
     def processed_file_names(self) -> List[str]:
-        #return [Path(prob).stem + ".pt" for prob in self.problems]
+        # return [Path(prob).stem + ".pt" for prob in self.problems]
         return [f"{self.id_partition}.pt"]
 
     def len(self) -> int:
@@ -100,107 +99,8 @@ class TorchDataset(InMemoryDataset):
         torch.save((data, slices), out)
 
 
-class DeepMathDataset(InMemoryDataset):
-    def __init__(self, root, name, transform=None, pre_transform=None):
-        self.root = root
-        self.name = name
-        super().__init__(root, transform, pre_transform)
-        self.data, self.slices = torch.load(self.processed_paths[0])
-
-    @property
-    def raw_file_names(self):
-        return [f"{self.name}"]
-
-    @property
-    def processed_file_names(self):
-        stem = Path(self.name).stem
-        return [f"{stem}.pt"]
-
-    def process(self):
-        data_list = []
-        with open(self.raw_paths[0], "r") as problems:
-            for problem in tqdm(problems):
-                # Extract info from the problem
-                # conjecture, premises, target = read_problem_deepmath(problem, self.root) TODO
-                print(problem)
-                # conjecture, premises = read_problem_tptp(problem, 'merged_problems')
-                conjecture, premises = read_problem_tptp(
-                    problem,
-                    "/shareddata/home/holden/axiom_caption/generated_problems/analysis/output_original_unquoted_sine_1_1/",
-                )
-                # Construct the data point
-                data = construct_graph(conjecture, premises)
-                # Add problem name
-                data.name = problem.strip()
-                # Add targets
-                # data.y = torch.tensor(target) TODO
-                # Append the final datapoint to the data list
-                data_list.append(data)
-        data, slices = self.collate(data_list)
-        out = Path(self.processed_dir) / self.processed_file_names[0]
-        torch.save((data, slices), out)
-
-
-class LTBDataset(Dataset):
-    def __init__(self, root, name, caption=None, transform=None, pre_transform=None):
-
-        print("root ", root)
-        root = os.path.join(root, name.split(".")[0])  # Make a separate folder for this data
-        print("root ", root)
-        self.root = root
-        self.name = name
-        self.caption = caption
-        print("CAPTION ", caption)
-
-        # Load problem ids
-        with open("id_files/" + self.name, "r") as problems:
-            self.problems = [prob.strip() for prob in list(problems)]
-
-        print(self.problems)
-
-        super().__init__(root, transform, pre_transform)
-
-    @property
-    def raw_file_names(self):
-        return self.problems
-
-    @property
-    def processed_file_names(self):
-        return [prob.split(".")[0] + ".pt" for prob in self.problems]
-
-    def len(self):
-        return len(self.processed_file_names)
-
-    # Need to overwrite this function to operate on the problem names
-    def indices(self):
-        return self.processed_file_names
-
-    def get(self, idx):
-        data = torch.load(os.path.join(self.processed_dir, idx))  # The ids are now the processed names
-        return data
-
-    def process(self):
-
-        print("processed_dir ", self.processed_dir)
-        print("caption ", self.caption)
-        # print(self.problems)
-
-        for problem in tqdm(self.problems):
-            # Read the problem caption
-            print("pre read: problem ", problem)
-            conjecture, axioms = read_problem_tptp(problem, self.caption)
-            # Construct the data point
-            data = construct_graph(conjecture, axioms)
-            # Add problem name
-            data.name = problem.strip()
-
-            # Save the data instance
-            save_path = os.path.join(self.processed_dir, problem.split(".")[0] + ".pt")
-            torch.save(data, save_path)
-
-
 def test_dataset():
-    dataset = TorchDataset("id_files/dev_100.txt", BenchmarkType('deepmath'))
+    dataset = TorchDataset("id_files/dev_100.txt", BenchmarkType("deepmath"))
     print(dataset)
     print(len(dataset))
 
