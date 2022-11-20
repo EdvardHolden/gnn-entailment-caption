@@ -29,3 +29,19 @@ To compute unsupervised embeddings, run the script 'embed_problems_unsupervised.
 It may use pre computed datasets and model, depending on the parameters given and what is available.
 Will automatically compute embeddings for all, premise and conjecture pooling configurations.
 the result is saved as 'embedding_unsupervised_*.pkl'
+
+
+
+## Extra
+
+Managed to build with:
+
+ rustup default nightly-2021-03-24-x86_64-unknown-linux-gnu
+source $HOME/.cargo/env
+
+cargo  +nightly build 
+cargo  build --release
+
+
+ cp target/release/libparser.so ./parser.so
+ 
