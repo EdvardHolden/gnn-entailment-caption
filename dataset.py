@@ -3,11 +3,16 @@ import torch
 from torch_geometric.data import Data, InMemoryDataset, Dataset
 from tqdm import tqdm
 import os
+from typing import List
 
+import config
 from parser import graph
 from utils import read_problem_deepmath, read_problem_tptp
 
 
+# TODO set mode Mizar vs deepmath
+
+# TODO what s the difference betweent these two?
 def construct_graph(conjecture, premises):
     nodes, sources, targets, premise_indices, conjecture_indices = graph(conjecture, premises)
     x = torch.tensor(nodes)
@@ -17,6 +22,78 @@ def construct_graph(conjecture, premises):
 
     data = Data(x=x, edge_index=edge_index, premise_index=premise_index, conjecture_index=conjecture_index)
     return data
+
+
+# TODO need to add some sort split on deeptmath/merge here!
+
+
+class TorchDataset(InMemoryDataset):
+    def __init__(self, id_file, transform=None, pre_transform=None):
+        self.root = Path(__file__).parent
+        self.id_file = id_file
+        self.id_partition = Path(id_file).stem
+        self.problem_dir = config.BENCHMARK_PATHS["deepmath"]
+
+        # Load problem ids and store in list
+        with open(self.id_file, "r") as problems:
+            self.problems = [prob.strip() for prob in list(problems)]
+
+        # Initialise the super
+        super().__init__(self.root.name, transform, pre_transform)
+
+        # Start process of getting the data
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_file_names(self) -> List[str]:
+        # These are the ids and not really the raw names
+        return self.problems
+
+    @property
+    def processed_file_names(self) -> List[str]:
+        #return [Path(prob).stem + ".pt" for prob in self.problems]
+        return [f"{self.id_partition}.pt"]
+
+    def len(self) -> int:
+        return len(self.processed_file_names)
+
+    # Need to overwrite this function to operate on the problem names
+    def indices(self):
+        return self.processed_file_names
+
+    def get(self, idx):
+        data = torch.load(os.path.join(self.processed_dir, idx))  # The ids are now the processed names
+        return data
+
+    def process(self):
+        data_list = []
+
+        # TODO FIX!
+        for problem in tqdm(self.raw_file_names):
+            # Extract info from the problem
+            # conjecture, premises, target = read_problem_deepmath(problem, self.root) TODO
+            # conjecture, premises = read_problem_tptp(problem, 'merged_problems')
+            # TODO change based on problem: also add path based on problem?
+            conjecture, premises = read_problem_tptp(problem, self.problem_dir)
+            # Construct the data point
+            data = construct_graph(conjecture, premises)
+            # Add problem name
+            data.name = problem.strip()
+            # Add targets
+            # data.y = torch.tensor(target)  # TODO
+
+            # Append the final datapoint to the data list
+            data_list.append(data)
+
+        if self.pre_filter is not None:
+            data_list = [data for data in data_list if self.pre_filter(data)]
+
+        if self.pre_transform is not None:
+            data_list = [self.pre_transform(data) for data in data_list]
+
+        data, slices = self.collate(data_list)
+        out = Path(self.processed_dir) / self.processed_file_names[0]
+        torch.save((data, slices), out)
 
 
 class DeepMathDataset(InMemoryDataset):
@@ -72,8 +149,10 @@ class LTBDataset(Dataset):
         print("CAPTION ", caption)
 
         # Load problem ids
-        with open("raw/" + self.name, "r") as problems:
+        with open("id_files/" + self.name, "r") as problems:
             self.problems = [prob.strip() for prob in list(problems)]
+
+        print(self.problems)
 
         super().__init__(root, transform, pre_transform)
 
@@ -116,38 +195,11 @@ class LTBDataset(Dataset):
             torch.save(data, save_path)
 
 
+def test_dataset():
+    dataset = TorchDataset("id_files/dev_100.txt")
+    print(dataset)
+
+
 if __name__ == "__main__":
 
-    # TODO clean up this mess!
-    """
-    print(Path(__file__).parent)
-    print("# Validation")
-    validate = DeepMathDataset(Path(__file__).parent, 'validation.txt')
-    print(validate)
-    #"""
-    """
-    print("# Testing")
-    test = DeepMathDataset(Path(__file__).parent, 'test.txt')
-    print(test)
-    print("# Training")
-    train = DeepMathDataset(Path(__file__).parent, 'train.txt')
-    print(train)
-    """
-
-    d = LTBDataset(
-        "graph_data",
-        "axiom_caption_test.txt",
-        caption="/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/",
-    )
-    # d = LTBDataset(Path(__file__).parent, 'jjt_fof_sine_1_0.txt', caption='/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/')
-    """
-    d = LTBDataset(
-        'graph_data',
-        'jjt_fof_sine_1_0.txt',
-        caption='/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/')
-    #print(d.get('JJT00001+1'))
-    #"""
-
-    print(d)
-    # print(d.raw_file_names)
-    # print(d.processed_file_names)
+    test_dataset()

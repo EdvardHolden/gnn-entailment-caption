@@ -3,7 +3,7 @@ from sklearn.model_selection import train_test_split
 
 
 def save_set(ids, name):
-    with open("raw/" + name + ".txt", "w") as f:
+    with open("id_files/" + name + ".txt", "w") as f:
         f.write("\n".join(ids))
 
 

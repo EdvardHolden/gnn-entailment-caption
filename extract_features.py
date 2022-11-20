@@ -19,7 +19,7 @@ parser.add_argument(
     help="The type of nodes to use in the final embedding",
 )
 parser.add_argument("--model_path", default="model.pt", help="Path to the model used for embedding")
-parser.add_argument("--id_file", default="deepmath.txt", help="Name of the ID file found in raw/")
+parser.add_argument("--id_file", default="deepmath.txt", help="Name of the ID file found in id_files/")
 parser.add_argument(
     "--print_distances",
     action="store_true",

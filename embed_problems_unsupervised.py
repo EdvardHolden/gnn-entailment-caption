@@ -34,10 +34,10 @@ BATCH_SIZE = 32
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--train_id_file", default="train.txt", help="Name of the file containing the training data in raw/"
+    "--train_id_file", default="train.txt", help="Name of the file containing the training data in id_files/"
 )
 parser.add_argument(
-    "--val_id_file", default="validation.txt", help="Name of the file containing the training data in raw/"
+    "--val_id_file", default="validation.txt", help="Name of the file containing the training data in id_files/"
 )
 
 if socket.gethostname() == "kontor":
@@ -151,7 +151,7 @@ def compute_graph(problem, problem_dir, embed_nodes=True):
 
 def get_problem_ids(id_file):
 
-    with open(os.path.join("raw", id_file), "r") as f:
+    with open(os.path.join("id_files", id_file), "r") as f:
         ids = f.readlines()
     return ids
 
