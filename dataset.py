@@ -58,7 +58,7 @@ class TorchDataset(InMemoryDataset):
     @property
     def processed_file_names(self) -> List[str]:
         # return [Path(prob).stem + ".pt" for prob in self.problems]
-        return [f"{self.id_partition}.pt"]
+        return [f"{self.benchmark_type}_{self.id_partition}.pt"]
 
     def len(self) -> int:
         return len(self.raw_file_names)
