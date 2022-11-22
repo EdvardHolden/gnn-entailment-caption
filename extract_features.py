@@ -59,7 +59,7 @@ def get_activation(name):
 
 
 def encode(model, data, nodes=None):
-    model.eval()  # Trick to make sure the batchnormalisation does not mess up
+    model.eval()  # Trick to make sure the batch-normalisation does not mess up
 
     embeddings = {}
     with torch.no_grad():
