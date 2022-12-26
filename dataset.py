@@ -21,6 +21,13 @@ class BenchmarkType(Enum):
         return self.value
 
 
+def load_ids(id_file):
+    with open(id_file, 'r') as f:
+        ids = f.readlines()
+
+    return [i.strip() for i in ids]
+
+
 def construct_graph(conjecture: List[str], premises: List[str]) -> Data:
     nodes, sources, targets, premise_indices, conjecture_indices = graph(conjecture, premises)
     x = torch.tensor(nodes)
@@ -33,7 +40,8 @@ def construct_graph(conjecture: List[str], premises: List[str]) -> Data:
 
 
 class TorchDatasetNEW(Dataset):
-    def __init__(self, id_file: str, benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH, transform=None, pre_transform=None):
+    def __init__(self, id_file: str, benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH, transform=None,
+                 pre_transform=None):
         self.root = Path(__file__).parent
         self.id_file = id_file
         self.id_partition = Path(id_file).stem
@@ -48,7 +56,7 @@ class TorchDatasetNEW(Dataset):
         super().__init__(self.root.name, transform, pre_transform)
 
         ## Start process of getting the data
-        #self.data, = torch.load(self.processed_paths[0])
+        # self.data, = torch.load(self.processed_paths[0])
 
     @property
     def raw_file_names(self) -> List[str]:
@@ -64,11 +72,12 @@ class TorchDatasetNEW(Dataset):
         return len(self.raw_file_names)
 
     def get(self, idx) -> Data:
-        data = torch.load(os.path.join(self.processed_dir, f"{self.benchmark_type}_{idx}.pt"))  # The ids are now the processed names
+        data = torch.load(
+            os.path.join(self.processed_dir, f"{self.benchmark_type}_{idx}.pt"))  # The ids are now the processed names
         return data
 
     def indices(self) -> Sequence:
-        #return range(self.len()) if self._indices is None else self._indices
+        # return range(self.len()) if self._indices is None else self._indices
         return self.problem_ids
 
     def process(self):
@@ -96,14 +105,14 @@ class TorchDatasetNEW(Dataset):
             if self.pre_transform is not None:
                 data = self.pre_transform(data)
 
-            #data, slices = self.collate(data)
+            # data, slices = self.collate(data)
             out = Path(self.processed_dir) / f"{self.benchmark_type}_{problem}.pt"
             torch.save(data, out)
-        
 
 
 class TorchDataset(InMemoryDataset):
-    def __init__(self, id_file: str, benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH, transform=None, pre_transform=None):
+    def __init__(self, id_file: str, benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH, transform=None,
+                 pre_transform=None):
         self.root = Path(__file__).parent
         self.id_file = id_file
         self.id_partition = Path(id_file).stem
@@ -170,7 +179,9 @@ class TorchDataset(InMemoryDataset):
         out = Path(self.processed_dir) / self.processed_file_names[0]
         torch.save((data, slices), out)
 
-def get_data_loader(id_file, benchmark_type : BenchmarkType = BenchmarkType.DEEPMATH, batch_size=config.BATCH_SIZE, shuffle=True, **kwargs):
+
+def get_data_loader(id_file, benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH, batch_size=config.BATCH_SIZE,
+                    shuffle=True, **kwargs):
     dataset = TorchDataset(id_file, benchmark_type)
     print("Dataset:", dataset)
     return DataLoader(
@@ -196,7 +207,6 @@ def test_data_loader():
 
 
 if __name__ == "__main__":
-
     print(1)
     test_dataset()
     print(2)
