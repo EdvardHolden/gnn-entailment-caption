@@ -99,6 +99,8 @@ es = tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=3)
 
 # For the different axiom types we manually create an embedding layer for mapping
 # the types to the embedding space. This creates or loads and existing embedding layer
+# tODO should be a function!
+
 embedding_path = "embedding_layer"
 if not os.path.exists(embedding_path):
     # Initialise the embedding layer

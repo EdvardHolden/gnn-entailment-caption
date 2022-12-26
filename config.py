@@ -7,6 +7,7 @@ device = "cpu"
 BENCHMARK_PATHS = {"deepmath": Path(__file__).parent / "nndata"}
 BATCH_SIZE = 64
 
+PROBLEM_DIR = str((Path(__file__).parent / "nndata").absolute())
 
 NODE_TYPE = {
     0: "True",
