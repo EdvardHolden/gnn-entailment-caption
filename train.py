@@ -6,6 +6,8 @@ from torch.optim import SGD
 from torch.optim.lr_scheduler import CyclicLR
 from tqdm import tqdm
 import argparse
+import numpy as np
+from collections import defaultdict
 
 from dataset import get_data_loader, BenchmarkType
 from model import Model
@@ -22,6 +24,8 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--benchmark_type", default="deepmath", type=BenchmarkType, help="Benchmark type fo the problems."
     )
+    parser.add_argument("--epochs", default=80, type=int, help="Number of training epochs.")
+    parser.add_argument("--es_patience", default=None, type=int, help="Number of EarlyStopping epochs")
 
     return parser
 
@@ -58,6 +62,7 @@ def main():
     optimizer = SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4, nesterov=True)
     scheduler = CyclicLR(optimizer, 0.01, 0.1, mode="exp_range", gamma=0.99995, step_size_up=4000)
 
+    # TODO what is this writer?
     stats = Writer(model)
     best_loss = torch.tensor(float("inf"))
 
@@ -66,20 +71,17 @@ def main():
     # TOdO need better storing of training metrics
     # TODO also include accuracy metrics?
 
-    # TODO change to epochs?
-    # while True:
-    for _ in range(2):
+    if args.es_patience is not None:
+        print(f"Early Stopping is set to: {args.es_patience}")
+        es_wait = 0
+        es_best_loss = np.inf
+
+    metrics = defaultdict(list)
+    for epoch in range(0, args.epochs):
+        print("Epoch", epoch)
         stats.report_model_parameters()
 
-        print("validating...")
-        model.eval()
-        val_loss = validation_loss(model, val_data)
-        stats.report_validation_loss(val_loss)
-        if val_loss < best_loss:
-            torch.save(model.state_dict(), "model_gnn.pt")
-            best_loss = val_loss
-        print(f"...done, loss {val_loss:.3E}")
-
+        print("Training...")
         model.train()
         for batch in tqdm(train_data):
             optimizer.zero_grad()
@@ -93,12 +95,34 @@ def main():
                 stats.report_output(batch.y, torch.sigmoid(y))
             stats.on_step()
 
+        print("Validating...")
+        model.eval()
+        val_loss = validation_loss(model, val_data)
+        metrics["val_loss"].append(float(val_loss.numpy()))
+        stats.report_validation_loss(val_loss)
+
+        # Save the model after every iteration
+        torch.save(model.state_dict(), "model_gnn.pt")
+
+        # Check for early stopping
+        if args.es_patience is not None:
+            es_wait += 1
+            if metrics["val_loss"][-1] < es_best_loss:
+                es_best_loss = metrics["val_loss"][-1]
+                es_wait = 0
+            elif es_wait >= args.es_patience:
+                print(f"Terminated training with early stopping after {es_wait} epochs of no improvement")
+                break
+
+        # TODO report both losses
+        print(f"Val loss: {val_loss:.3E}")
+        print()
+
+    # TODO save some overall stats?
+    print(metrics)
+
 
 if __name__ == "__main__":
     torch.manual_seed(0)
-
-    # TODO move to training? - should be removed completely with epochs
-    try:
-        main()
-    except KeyboardInterrupt:
-        pass
+    main()
+    print("# Finished")
