@@ -24,7 +24,7 @@ class BenchmarkType(Enum):
 
 
 def load_ids(id_file) -> List[str]:
-    with open(id_file, 'r') as f:
+    with open(id_file, "r") as f:
         ids = f.readlines()
 
     return [i.strip() for i in ids]
@@ -53,13 +53,13 @@ def remove_node_type(nodes, sources, targets, premise_indices, conjecture_indice
 
     # Transfer the node types
     attr = {i: t for i, t in enumerate(nodes)}
-    nx.set_node_attributes(G, attr, name='type')
+    nx.set_node_attributes(G, attr, name="type")
 
     # Remove the given node type
     for node_id in list(G.nodes):
 
         # Check if node is of the correct type
-        if G.nodes[node_id]['type'] != node_type:
+        if G.nodes[node_id]["type"] != node_type:
             continue
 
         # Get all in/out edges and remap current node
@@ -82,7 +82,7 @@ def remove_node_type(nodes, sources, targets, premise_indices, conjecture_indice
     new_sources = [s for s, t in G.edges]
     new_sources = list(map(node_map.get, new_sources))
 
-    new_nodes = [G.nodes[map_node[n]]['type'] for n in range(len(map_node))]
+    new_nodes = [G.nodes[map_node[n]]["type"] for n in range(len(map_node))]
 
     new_premise_indices = list(map(node_map.get, premise_indices))
     new_conjecture_indices = list(map(node_map.get, conjecture_indices))
@@ -95,9 +95,9 @@ def construct_graph(conjecture: List[str], premises: List[str], remove_argument_
     nodes, sources, targets, premise_indices, conjecture_indices = graph(conjecture, premises)
 
     if remove_argument_node:
-        nodes, sources, targets, premise_indices, conjecture_indices = remove_node_type(nodes, sources, targets,
-                                                                                        premise_indices,
-                                                                                        conjecture_indices)
+        nodes, sources, targets, premise_indices, conjecture_indices = remove_node_type(
+            nodes, sources, targets, premise_indices, conjecture_indices
+        )
 
     x = torch.tensor(nodes)
     edge_index = torch.tensor([sources, targets])
@@ -109,9 +109,15 @@ def construct_graph(conjecture: List[str], premises: List[str], remove_argument_
 
 
 class TorchDatasetNEW(Dataset):
-    def __init__(self, id_file: str, benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH, transform=None,
-                 pre_transform=None, remove_argument_node: bool = False):
-        self.root = Path('.')
+    def __init__(
+        self,
+        id_file: str,
+        benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH,
+        transform=None,
+        pre_transform=None,
+        remove_argument_node: bool = False,
+    ):
+        self.root = Path(".")
         self.id_file = id_file
         self.id_partition = Path(id_file).stem
         self.benchmark_type = benchmark_type
@@ -140,7 +146,8 @@ class TorchDatasetNEW(Dataset):
 
     def get(self, idx) -> Data:
         data = torch.load(
-            os.path.join(self.processed_dir, f"{self.benchmark_type}_{idx}.pt"))  # The ids are now the processed names
+            os.path.join(self.processed_dir, f"{self.benchmark_type}_{idx}.pt")
+        )  # The ids are now the processed names
         return data
 
     def indices(self) -> Sequence:
@@ -152,7 +159,9 @@ class TorchDatasetNEW(Dataset):
         for problem in tqdm(self.raw_file_names):
 
             # Read the problem
-            conjecture, premises, target = read_problem_from_file(self.benchmark_type, self.problem_dir, problem)
+            conjecture, premises, target = read_problem_from_file(
+                self.benchmark_type, self.problem_dir, problem
+            )
 
             # Construct the data point
             data = construct_graph(conjecture, premises, remove_argument_node=self.remove_argument_node)
@@ -244,8 +253,14 @@ class TorchDataset(InMemoryDataset):
 """
 
 
-def get_data_loader(id_file, benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH, batch_size: int = config.BATCH_SIZE,
-                    shuffle: bool = True, remove_argument_node: bool = False, **kwargs):
+def get_data_loader(
+    id_file,
+    benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH,
+    batch_size: int = config.BATCH_SIZE,
+    shuffle: bool = True,
+    remove_argument_node: bool = False,
+    **kwargs,
+):
     dataset = TorchDatasetNEW(id_file, benchmark_type, remove_argument_node=remove_argument_node)
     print("Dataset:", dataset)
     return DataLoader(
