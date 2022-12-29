@@ -53,8 +53,8 @@ def main():
     train_data = get_data_loader(args.train_id, args.benchmark_type)
     val_data = get_data_loader(args.val_id, args.benchmark_type)
 
-    # TODO what is this number? 17
-    model = Model(17).to(config.device)
+    # Should take model parameters in another way?
+    model = Model().to(config.device)
     optimizer = SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4, nesterov=True)
     scheduler = CyclicLR(optimizer, 0.01, 0.1, mode="exp_range", gamma=0.99995, step_size_up=4000)
 
@@ -64,6 +64,7 @@ def main():
     #  TODO Separate the train and validation loop out?
 
     # TOdO need better storing of training metrics
+    # TODO also include accuracy metrics?
 
     # TODO change to epochs?
     # while True:

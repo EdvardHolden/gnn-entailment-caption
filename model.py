@@ -3,6 +3,8 @@ from torch.nn import BatchNorm1d, Embedding, Linear, Module, ModuleList
 from torch.nn.functional import relu
 from torch_geometric import nn as geom
 
+import config
+
 LAYERS = 24
 K = 8
 
@@ -64,9 +66,10 @@ class GlobalPoolLayer(Module):
 
 
 class Model(Module):
-    def __init__(self, input_size):
+    def __init__(self):
         super().__init__()
-        self.input = Embedding(input_size, 2 * K)
+        # TODO make separate value for embedding dimensions>
+        self.input = Embedding(len(config.NODE_TYPE), 2 * K)
         self.dense = DenseBlock(LAYERS)
         self.global_pool = GlobalPoolLayer(2 * (LAYERS + 1) * K)
         self.output = FullyConnectedLayer(2 * (LAYERS + 1) * K, 1)
