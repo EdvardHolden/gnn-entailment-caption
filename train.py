@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
+from pickle import dump
 from pathlib import Path
+from typing import Tuple
+
 import torch
 from torch.nn.functional import binary_cross_entropy_with_logits
 from torch.optim import SGD
@@ -8,6 +11,7 @@ from tqdm import tqdm
 import argparse
 import numpy as np
 from collections import defaultdict
+import os
 
 from dataset import get_data_loader, BenchmarkType
 from model import Model
@@ -24,6 +28,9 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--benchmark_type", default="deepmath", type=BenchmarkType, help="Benchmark type fo the problems."
     )
+    parser.add_argument(
+        "--experiment_dir", default="experiments/premise/test", help="Directory for saving model and stats"
+    )
     parser.add_argument("--epochs", default=80, type=int, help="Number of training epochs.")
     parser.add_argument("--es_patience", default=None, type=int, help="Number of EarlyStopping epochs")
 
@@ -38,15 +45,32 @@ def batch_loss(model, batch, reduction="mean"):
     return y, loss
 
 
-def dataset_loss(model, dataset):
+def accuracy_matches(pred, actual) -> int:
+
+    # Convert to binary
+    predicted = torch.sigmoid(pred).round().long()
+    # Compute number of matches
+    correct = actual.eq(predicted).sum().item()
+    return correct
+
+
+def dataset_loss(model, dataset) -> Tuple[float, float]:
+
     losses = []
+    tot_correct, tot_predictions = 0, 0
+
     with torch.no_grad():
         for batch in tqdm(dataset):
-            print(batch)
-            _, loss = batch_loss(model, batch, reduction="none")
+            y, loss = batch_loss(model, batch, reduction="none")
             losses.extend(loss.numpy())
 
-    return np.mean(losses)
+            correct = accuracy_matches(y, batch.y)
+            tot_correct += correct
+            tot_predictions += len(batch.y)
+
+    mean_loss = float(np.mean(losses))
+    accuracy = 100 * (tot_correct / tot_predictions)
+    return mean_loss, accuracy
 
 
 def main():
@@ -54,6 +78,10 @@ def main():
     # Get arguments
     parser = get_parser()
     args = parser.parse_args()
+
+    # Make experiment dir if not exists
+    if not os.path.exists(args.experiment_dir):
+        os.makedirs(args.experiment_dir)
 
     train_data = get_data_loader(args.train_id, args.benchmark_type)
     val_data = get_data_loader(args.val_id, args.benchmark_type)
@@ -66,11 +94,6 @@ def main():
     # TODO what is this writer?
     stats = Writer(model)
     best_loss = torch.tensor(float("inf"))
-
-    #  TODO Separate the train and validation loop out?
-
-    # TOdO need better storing of training metrics
-    # TODO also include accuracy metrics?
 
     if args.es_patience is not None:
         print(f"Early Stopping is set to: {args.es_patience}")
@@ -91,6 +114,7 @@ def main():
             optimizer.step()
             scheduler.step()
 
+            # TODO this is somewhat wrong as the batch size may vary?
             stats.report_train_loss(loss.mean())
             if stats.step % 32 == 0:
                 stats.report_output(batch.y, torch.sigmoid(y))
@@ -98,14 +122,17 @@ def main():
 
         print("Validating...")
         model.eval()
-        train_loss = dataset_loss(model, train_data)
+        train_loss, train_acc = dataset_loss(model, train_data)
         metrics["train_loss"].append(train_loss)
-        val_loss = dataset_loss(model, val_data)
+        metrics["train_acc"].append(train_acc)
+
+        val_loss, val_acc = dataset_loss(model, val_data)
         metrics["val_loss"].append(val_loss)
+        metrics["val_acc"].append(val_acc)
         stats.report_validation_loss(val_loss)
 
         # Save the model after every iteration
-        torch.save(model.state_dict(), "model_gnn.pt")
+        torch.save(model.state_dict(), os.path.join(args.experiment_dir, "model_gnn.pt"))
 
         # Check for early stopping
         if args.es_patience is not None:
@@ -117,15 +144,17 @@ def main():
                 print(f"Terminated training with early stopping after {es_wait} epochs of no improvement")
                 break
 
-        # TODO report both losses
+        # Report epoch metrics
         print(f"Val loss: {val_loss:.3E}")
+        print(f"Val acc : {val_acc:.3E}")
         print(f"Train loss: {train_loss:.3E}")
+        print(f"Train acc : {train_acc:.3E}")
         print()
 
-    # TODO save some overall stats?
-    # TODO should create some working directory?
-    # TODO should save this somehow?
+    # Save the training history
     print(metrics)
+    with open(os.path.join(args.experiment_dir, "history.pkl"), "wb") as f:
+        dump(metrics, f)
 
 
 if __name__ == "__main__":
