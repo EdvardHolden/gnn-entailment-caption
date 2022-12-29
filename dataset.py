@@ -23,7 +23,7 @@ class BenchmarkType(Enum):
         return self.value
 
 
-def load_ids(id_file):
+def load_ids(id_file) -> List[str]:
     with open(id_file, 'r') as f:
         ids = f.readlines()
 
@@ -244,8 +244,8 @@ class TorchDataset(InMemoryDataset):
 """
 
 
-def get_data_loader(id_file, benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH, batch_size=config.BATCH_SIZE,
-                    shuffle=True, remove_argument_node=False, **kwargs):
+def get_data_loader(id_file, benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH, batch_size: int = config.BATCH_SIZE,
+                    shuffle: bool = True, remove_argument_node: bool = False, **kwargs):
     dataset = TorchDatasetNEW(id_file, benchmark_type, remove_argument_node=remove_argument_node)
     print("Dataset:", dataset)
     return DataLoader(
