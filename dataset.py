@@ -31,6 +31,7 @@ def load_ids(id_file) -> List[str]:
 
 
 def read_problem_from_file(benchmark_type, problem_dir, problem):
+    target = None
     if benchmark_type is BenchmarkType.DEEPMATH:
         conjecture, premises, target = read_problem_deepmath(problem_dir, problem)
     elif benchmark_type is BenchmarkType.TPTP:
@@ -38,7 +39,7 @@ def read_problem_from_file(benchmark_type, problem_dir, problem):
     else:
         raise ValueError(f"Not implemented problem loader for benchmark {benchmark_type}")
 
-    return conjecture, premises
+    return conjecture, premises, target
 
 
 def remove_node_type(nodes, sources, targets, premise_indices, conjecture_indices, node_type=4):
@@ -110,7 +111,7 @@ def construct_graph(conjecture: List[str], premises: List[str], remove_argument_
 class TorchDatasetNEW(Dataset):
     def __init__(self, id_file: str, benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH, transform=None,
                  pre_transform=None, remove_argument_node: bool = False):
-        self.root = Path(__file__).parent
+        self.root = Path('.')
         self.id_file = id_file
         self.id_partition = Path(id_file).stem
         self.benchmark_type = benchmark_type
@@ -149,10 +150,9 @@ class TorchDatasetNEW(Dataset):
     def process(self):
 
         for problem in tqdm(self.raw_file_names):
-            target = None
 
             # Read the problem
-            conjecture, premises = read_problem_from_file(self.benchmark_type, self.problem_dir, problem)
+            conjecture, premises, target = read_problem_from_file(self.benchmark_type, self.problem_dir, problem)
 
             # Construct the data point
             data = construct_graph(conjecture, premises, remove_argument_node=self.remove_argument_node)
