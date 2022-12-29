@@ -30,22 +30,23 @@ def get_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def batch_loss(model, batch):
+def batch_loss(model, batch, reduction="mean"):
     batch = batch.to(config.device)
     y = model(batch)
-    loss = binary_cross_entropy_with_logits(y, batch.y)
+    loss = binary_cross_entropy_with_logits(y, batch.y, reduction=reduction)
     del batch
     return y, loss
 
 
-def validation_loss(model, validation):
+def dataset_loss(model, dataset):
     losses = []
     with torch.no_grad():
-        for batch in tqdm(validation):
-            _, loss = batch_loss(model, batch)
-            losses.append(loss.mean())
+        for batch in tqdm(dataset):
+            print(batch)
+            _, loss = batch_loss(model, batch, reduction="none")
+            losses.extend(loss.numpy())
 
-    return torch.tensor(losses).mean()
+    return np.mean(losses)
 
 
 def main():
@@ -97,8 +98,10 @@ def main():
 
         print("Validating...")
         model.eval()
-        val_loss = validation_loss(model, val_data)
-        metrics["val_loss"].append(float(val_loss.numpy()))
+        train_loss = dataset_loss(model, train_data)
+        metrics["train_loss"].append(train_loss)
+        val_loss = dataset_loss(model, val_data)
+        metrics["val_loss"].append(val_loss)
         stats.report_validation_loss(val_loss)
 
         # Save the model after every iteration
@@ -116,9 +119,12 @@ def main():
 
         # TODO report both losses
         print(f"Val loss: {val_loss:.3E}")
+        print(f"Train loss: {train_loss:.3E}")
         print()
 
     # TODO save some overall stats?
+    # TODO should create some working directory?
+    # TODO should save this somehow?
     print(metrics)
 
 
