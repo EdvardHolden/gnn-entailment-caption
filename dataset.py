@@ -30,6 +30,33 @@ def load_ids(id_file) -> List[str]:
     return [i.strip() for i in ids]
 
 
+def _process_problem(
+    problem: str,
+    problem_dir: str,
+    benchmark_type: BenchmarkType,
+    remove_argument_node: bool,
+    pre_filter=None,
+    pre_transform=None,
+) -> Data:
+
+    # Read the problem
+    conjecture, premises, target = read_problem_from_file(benchmark_type, problem_dir, problem)
+
+    # Construct the data point
+    data = construct_graph(conjecture, premises, remove_argument_node=remove_argument_node)
+    data.name = Path(problem).stem
+    if target is not None:
+        data.y = torch.tensor(target)
+
+    if pre_filter is not None:
+        data = pre_filter(data)
+
+    if pre_transform is not None:
+        data = pre_transform(data)
+
+    return data
+
+
 def read_problem_from_file(benchmark_type, problem_dir, problem):
     target = None
     if benchmark_type is BenchmarkType.DEEPMATH:
@@ -108,7 +135,7 @@ def construct_graph(conjecture: List[str], premises: List[str], remove_argument_
     return data
 
 
-class TorchDatasetNEW(Dataset):
+class TorchLoadDataset(Dataset):
     def __init__(
         self,
         id_file: str,
@@ -124,9 +151,8 @@ class TorchDatasetNEW(Dataset):
         self.problem_dir = config.BENCHMARK_PATHS[str(benchmark_type)]
         self.remove_argument_node = remove_argument_node
 
-        # Load problem ids and store in list
-        with open(self.id_file, "r") as problems:
-            self.problem_ids = [prob.strip() for prob in list(problems)]
+        # Load problem ids
+        self.problem_ids = load_ids(id_file)
 
         # Initialise the super
         super().__init__(self.root.name, transform, pre_transform)
@@ -138,61 +164,54 @@ class TorchDatasetNEW(Dataset):
 
     @property
     def processed_file_names(self) -> List[str]:
-        # return [Path(prob).stem + ".pt" for prob in self.problems]
         return [f"{self.benchmark_type}_{p}.pt" for p in self.problem_ids]
 
     def len(self) -> int:
         return len(self.raw_file_names)
 
-    def get(self, idx) -> Data:
+    def get(self, idx: int) -> Data:
         data = torch.load(
             os.path.join(self.processed_dir, f"{self.benchmark_type}_{idx}.pt")
         )  # The ids are now the processed names
         return data
 
     def indices(self) -> Sequence:
-        # return range(self.len()) if self._indices is None else self._indices
         return self.problem_ids
 
     def process(self):
-
         for problem in tqdm(self.raw_file_names):
 
-            # Read the problem
-            conjecture, premises, target = read_problem_from_file(
-                self.benchmark_type, self.problem_dir, problem
+            data = _process_problem(
+                problem,
+                self.problem_dir,
+                self.benchmark_type,
+                self.remove_argument_node,
+                pre_filter=self.pre_filter,
+                pre_transform=self.pre_transform,
             )
 
-            # Construct the data point
-            data = construct_graph(conjecture, premises, remove_argument_node=self.remove_argument_node)
-            data.name = Path(problem).stem
-            if target is not None:
-                data.y = torch.tensor(target)
-
-            if self.pre_filter is not None:
-                data = self.pre_filter(data)
-
-            if self.pre_transform is not None:
-                data = self.pre_transform(data)
-
-            # data, slices = self.collate(data)
-            out = Path(self.processed_dir) / f"{self.benchmark_type}_{problem}.pt"
-            torch.save(data, out)
+            out_file = Path(self.processed_dir) / f"{self.benchmark_type}_{problem}.pt"
+            torch.save(data, out_file)
 
 
-"""
-class TorchDataset(InMemoryDataset):
-    def __init__(self, id_file: str, benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH, transform=None,
-                 pre_transform=None):
-        self.root = Path(__file__).parent
+class TorchMemoryDataset(InMemoryDataset):
+    def __init__(
+        self,
+        id_file: str,
+        benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH,
+        transform=None,
+        pre_transform=None,
+        remove_argument_node: bool = False,
+    ):
+        self.root = Path(".")
         self.id_file = id_file
         self.id_partition = Path(id_file).stem
         self.benchmark_type = benchmark_type
         self.problem_dir = config.BENCHMARK_PATHS[str(benchmark_type)]
+        self.remove_argument_node = remove_argument_node
 
-        # Load problem ids and store in list
-        with open(self.id_file, "r") as problems:
-            self.problem_ids = [prob.strip() for prob in list(problems)]
+        # Load problem ids
+        self.problem_ids = load_ids(id_file)
 
         # Initialise the super
         super().__init__(self.root.name, transform, pre_transform)
@@ -213,56 +232,50 @@ class TorchDataset(InMemoryDataset):
     def len(self) -> int:
         return len(self.raw_file_names)
 
-    def get(self, idx) -> Data:
-        data = torch.load(os.path.join(self.processed_dir, idx))  # The ids are now the processed names
+    '''
+    def get(self, idx: int) -> Data:
+        data = torch.load(os.path.join(self.processed_dir, str(idx)))  # The ids are now the processed names
         return data
+        '''
 
     def process(self):
         data_list = []
 
         for problem in tqdm(self.raw_file_names):
-            target = None
 
-            # Read the problem
-            if self.benchmark_type is BenchmarkType.DEEPMATH:
-                conjecture, premises, target = read_problem_deepmath(self.problem_dir, problem)
-            elif self.benchmark_type is BenchmarkType.TPTP:
-                conjecture, premises = read_problem_tptp(self.problem_dir, problem)
-            else:
-                raise ValueError(f"Not implemented problem loader for benchmark {self.benchmark_type}")
-
-            # Construct the data point
-            data = construct_graph(conjecture, premises)
-            data.name = Path(problem).stem
-            if target is not None:
-                data.y = torch.tensor(target)
+            data = _process_problem(
+                problem,
+                self.problem_dir,
+                self.benchmark_type,
+                self.remove_argument_node,
+                pre_filter=self.pre_filter,
+                pre_transform=self.pre_transform,
+            )
 
             # Append the final datapoint to the data list
             data_list.append(data)
 
-        if self.pre_filter is not None:
-            data_list = [data for data in data_list if self.pre_filter(data)]
-
-        if self.pre_transform is not None:
-            data_list = [self.pre_transform(data) for data in data_list]
-
         data, slices = self.collate(data_list)
         out = Path(self.processed_dir) / self.processed_file_names[0]
         torch.save((data, slices), out)
-        
-"""
 
 
 def get_data_loader(
     id_file,
     benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH,
+    in_memory: bool = True,
     batch_size: int = config.BATCH_SIZE,
     shuffle: bool = True,
     remove_argument_node: bool = False,
     **kwargs,
-):
-    dataset = TorchDatasetNEW(id_file, benchmark_type, remove_argument_node=remove_argument_node)
+) -> DataLoader:
+
+    if in_memory:
+        dataset = TorchMemoryDataset(id_file, benchmark_type, remove_argument_node=remove_argument_node)
+    else:
+        dataset = TorchLoadDataset(id_file, benchmark_type, remove_argument_node=remove_argument_node)
     print("Dataset:", dataset)
+
     return DataLoader(
         dataset,
         batch_size=batch_size,
@@ -275,7 +288,8 @@ def get_data_loader(
 
 
 def test_dataset():
-    dataset = TorchDatasetNEW("id_files/dev_100.txt", BenchmarkType("deepmath"))
+    dataset = TorchLoadDataset("id_files/dev_100.txt", BenchmarkType("deepmath"))
+    #dataset = TorchMemoryDataset("id_files/dev_100.txt", BenchmarkType("deepmath"))
     print(dataset)
     print(len(dataset))
 
@@ -291,4 +305,4 @@ if __name__ == "__main__":
     print(2)
     test_data_loader()
     print(3)
-    print(TorchDatasetNEW("id_files/dev_100.txt"))
+    print(TorchLoadDataset("id_files/dev_100.txt"))
