@@ -5,7 +5,7 @@ from torch_geometric import nn as geom
 
 import config
 
-LAYERS = 24
+LAYERS = 24 # TODO what is this variable?
 K = 8
 
 
@@ -71,14 +71,14 @@ class Model(Module):
         # TODO make separate value for embedding dimensions>
         self.input = Embedding(len(config.NODE_TYPE), 2 * K)
         self.dense = DenseBlock(LAYERS)
-        self.global_pool = GlobalPoolLayer(2 * (LAYERS + 1) * K)
+        #self.global_pool = GlobalPoolLayer(2 * (LAYERS + 1) * K)
         self.output = FullyConnectedLayer(2 * (LAYERS + 1) * K, 1)
 
     def forward(self, input_batch):
         x = input_batch.x
         edge_index = input_batch.edge_index
         premise_index = input_batch.premise_index
-        batch = input_batch.batch
+        # batch = input_batch.batch
 
         # TODO why is global pool not used???
 
@@ -92,7 +92,7 @@ class Model(Module):
 def main():
     from torchinfo import summary
 
-    model = Model(17)
+    model = Model()
     summary(model)
     print()
     print()
