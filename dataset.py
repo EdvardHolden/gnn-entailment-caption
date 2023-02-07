@@ -232,11 +232,11 @@ class TorchMemoryDataset(InMemoryDataset):
     def len(self) -> int:
         return len(self.raw_file_names)
 
-    '''
+    """
     def get(self, idx: int) -> Data:
         data = torch.load(os.path.join(self.processed_dir, str(idx)))  # The ids are now the processed names
         return data
-        '''
+        """
 
     def process(self):
         data_list = []
@@ -263,6 +263,7 @@ class TorchMemoryDataset(InMemoryDataset):
 def get_data_loader(
     id_file,
     benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH,
+    transform=None,
     in_memory: bool = True,
     batch_size: int = config.BATCH_SIZE,
     shuffle: bool = True,
@@ -270,10 +271,15 @@ def get_data_loader(
     **kwargs,
 ) -> DataLoader:
 
+    # TODO could be nice with some kwargs??
     if in_memory:
-        dataset = TorchMemoryDataset(id_file, benchmark_type, remove_argument_node=remove_argument_node)
+        dataset = TorchMemoryDataset(
+            id_file, benchmark_type, transform=transform, remove_argument_node=remove_argument_node
+        )
     else:
-        dataset = TorchLoadDataset(id_file, benchmark_type, remove_argument_node=remove_argument_node)
+        dataset = TorchLoadDataset(
+            id_file, benchmark_type, transform=transform, remove_argument_node=remove_argument_node
+        )
     print("Dataset:", dataset)
 
     return DataLoader(
@@ -289,7 +295,7 @@ def get_data_loader(
 
 def test_dataset():
     dataset = TorchLoadDataset("id_files/dev_100.txt", BenchmarkType("deepmath"))
-    #dataset = TorchMemoryDataset("id_files/dev_100.txt", BenchmarkType("deepmath"))
+    # dataset = TorchMemoryDataset("id_files/dev_100.txt", BenchmarkType("deepmath"))
     print(dataset)
     print(len(dataset))
 
