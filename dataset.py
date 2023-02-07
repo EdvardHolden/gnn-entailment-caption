@@ -263,23 +263,22 @@ class TorchMemoryDataset(InMemoryDataset):
 def get_data_loader(
     id_file,
     benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH,
-    transform=None,
     in_memory: bool = True,
     batch_size: int = config.BATCH_SIZE,
     shuffle: bool = True,
-    remove_argument_node: bool = False,
     **kwargs,
 ) -> DataLoader:
 
-    # TODO could be nice with some kwargs??
     if in_memory:
         dataset = TorchMemoryDataset(
-            id_file, benchmark_type, transform=transform, remove_argument_node=remove_argument_node
+            id_file, benchmark_type, **kwargs
         )
     else:
         dataset = TorchLoadDataset(
-            id_file, benchmark_type, transform=transform, remove_argument_node=remove_argument_node
+            id_file, benchmark_type, **kwargs
         )
+    kwargs.pop('transform', None)
+    kwargs.pop('remove_argument_node', None)
     print("Dataset:", dataset)
 
     return DataLoader(
