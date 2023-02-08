@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """Peform hyperparemeters search"""
 
 import os

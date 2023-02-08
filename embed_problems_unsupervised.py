@@ -37,7 +37,9 @@ parser.add_argument(
     "--train_id_file", default="train.txt", help="Name of the file containing the training data in id_files/"
 )
 parser.add_argument(
-    "--val_id_file", default="validation.txt", help="Name of the file containing the training data in id_files/"
+    "--val_id_file",
+    default="validation.txt",
+    help="Name of the file containing the training data in id_files/",
 )
 
 if socket.gethostname() == "kontor":

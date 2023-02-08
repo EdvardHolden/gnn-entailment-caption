@@ -270,15 +270,11 @@ def get_data_loader(
 ) -> DataLoader:
 
     if in_memory:
-        dataset = TorchMemoryDataset(
-            id_file, benchmark_type, **kwargs
-        )
+        dataset = TorchMemoryDataset(id_file, benchmark_type, **kwargs)
     else:
-        dataset = TorchLoadDataset(
-            id_file, benchmark_type, **kwargs
-        )
-    kwargs.pop('transform', None)
-    kwargs.pop('remove_argument_node', None)
+        dataset = TorchLoadDataset(id_file, benchmark_type, **kwargs)
+    kwargs.pop("transform", None)
+    kwargs.pop("remove_argument_node", None)
     print("Dataset:", dataset)
 
     return DataLoader(

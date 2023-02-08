@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """Aggregates results from the metrics_eval_best_weights.json in a parent folder"""
 
 
