@@ -17,8 +17,8 @@ from stats_writer import Writer
 def get_train_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--train_id", default="id_files/train.txt", help="ID file used for training")
-    parser.add_argument("--val_id", default="id_files/validation.txt", help="ID file used for validation")
+    parser.add_argument("--train_id", default=config.TRAIN_ID, help="ID file used for training")
+    parser.add_argument("--val_id", default=config.VAL_ID, help="ID file used for validation")
     parser.add_argument(
         "--benchmark_type", default="deepmath", type=BenchmarkType, help="Benchmark type fo the problems."
     )
@@ -26,7 +26,9 @@ def get_train_parser() -> argparse.ArgumentParser:
         "--experiment_dir", default="experiments/premise/test", help="Directory for saving model and stats"
     )
     parser.add_argument("--epochs", default=config.EPOCHS, type=int, help="Number of training epochs.")
-    parser.add_argument("--es_patience", default=None, type=int, help="Number of EarlyStopping epochs")
+    parser.add_argument(
+        "--es_patience", default=config.ES_PATIENCE, type=int, help="Number of EarlyStopping epochs"
+    )
 
     parser.add_argument("--graph_bidirectional", action="store_true", help="Makes the graphs bidirectional")
     parser.add_argument(

@@ -9,7 +9,12 @@ device = "cpu"
 
 BENCHMARK_PATHS = {"deepmath": Path(__file__).parent / "nndata"}
 BATCH_SIZE = 64
+
 EPOCHS = 80
+ES_PATIENCE = 5
+
+TRAIN_ID = "id_files/train.txt"
+VAL_ID = "id_files/validation.txt"
 
 PROBLEM_DIR = str((Path(__file__).parent / "nndata").absolute())
 
