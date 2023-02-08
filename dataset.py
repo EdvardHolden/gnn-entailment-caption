@@ -8,6 +8,7 @@ from typing import List, Sequence
 from enum import Enum
 import networkx as nx
 from itertools import product
+import multiprocessing
 
 import config
 from graph_parser import graph
@@ -283,7 +284,7 @@ def get_data_loader(
         collate_fn=Batch.from_data_list,
         shuffle=shuffle,
         pin_memory=True,
-        num_workers=8,
+        num_workers=min(multiprocessing.cpu_count() - 1, 8),
         **kwargs,
     )
 
