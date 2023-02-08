@@ -43,5 +43,6 @@ cargo  +nightly build
 cargo  build --release
 
 
- cp target/release/libparser.so ./parser.so
+#cp target/release/libparser.so ./parser.so
+cp target/release/libparser.so ./graph_parser.so
  
