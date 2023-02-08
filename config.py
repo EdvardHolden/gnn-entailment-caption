@@ -1,4 +1,7 @@
+import sys
 from pathlib import Path
+
+PYTHON = sys.executable
 
 # export CUDA_VISIBLE_DEVICES=""
 # device = 'cuda'

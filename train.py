@@ -13,7 +13,7 @@ from model import GNNStack, load_model_params
 from stats_writer import Writer
 
 
-def get_parser() -> argparse.ArgumentParser:
+def get_train_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--train_id", default="id_files/train.txt", help="ID file used for training")
@@ -84,7 +84,7 @@ def test_step(model, test_data, writer: Writer, testing: bool) -> Tuple[float, f
 
 def main():
     # Get arguments
-    parser = get_parser()
+    parser = get_train_parser()
     args = parser.parse_args()
 
     dataset_params = {}
@@ -125,7 +125,7 @@ def main():
     for epoch in range(0, args.epochs):
 
         train_step(model, train_data, criterion, optimizer)
-        # writer.report_model_parameters() FIXME
+        # writer.report_model_parameters() # FIXME - crashes for unkown reason...
 
         train_loss, train_acc = test_step(model, train_data, writer, testing=False)
         test_loss, test_acc = test_step(model, val_data, writer, testing=True)
