@@ -1,14 +1,22 @@
+import os
+import json
 import torch
 from torch.nn import Embedding
 import torch.nn.functional as F
-import torch_geometric
 from torch_geometric.nn import GCNConv, Linear, MessagePassing
 import torch.nn as nn
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict
 
 import config
 
 GCN_NORMALISATION = {"batch": nn.BatchNorm1d, "layer": nn.LayerNorm}
+
+
+def load_model_params(model_dir: str) -> Dict:
+    # Load parameters from model directory and create namespace
+    with open(os.path.join(model_dir, "params.json"), "r") as f:
+        params = json.load(f)
+    return params
 
 
 def get_dense_output_network(

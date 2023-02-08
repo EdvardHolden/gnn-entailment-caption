@@ -9,14 +9,13 @@ from typing import Tuple
 
 import config
 from dataset import get_data_loader, BenchmarkType
-from model import GNNStack
+from model import GNNStack, load_model_params
 from stats_writer import Writer
 
 
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
 
-    # TODO move to config??
     parser.add_argument("--train_id", default="id_files/train.txt", help="ID file used for training")
     parser.add_argument("--val_id", default="id_files/validation.txt", help="ID file used for validation")
     parser.add_argument(
@@ -101,17 +100,9 @@ def main():
     train_data = get_data_loader(args.train_id, args.benchmark_type, **dataset_params)
     val_data = get_data_loader(args.val_id, args.benchmark_type, **dataset_params)
 
-    # TODO need to load experiment params!!!
-    # Should take model parameters in another way?
-    # model = Model().to(config.device)
-    model = GNNStack(
-        hidden_dim=16,
-        num_convolutional_layers=1,
-        no_dense_layers=1,
-        direction="single",
-        dropout_rate=0.2,
-        task="premise",
-    )
+    # Initialise model
+    model_params = load_model_params(args.experiment_dir)
+    model = GNNStack(**model_params)
     model = model.to(config.device)
 
     # Initialise writer
