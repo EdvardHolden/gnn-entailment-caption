@@ -26,3 +26,6 @@ NODE_TYPE = {
     13: "Axiom",
     14: "Conjecture",
 }
+
+
+dpath = Path.home() / "gnn-entailment-caption"
