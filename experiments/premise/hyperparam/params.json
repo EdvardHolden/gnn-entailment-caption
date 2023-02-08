@@ -1,0 +1,8 @@
+{
+	"hidden_dim": [12, 16],
+	"num_convolutional_layers": [1],
+	"no_dense_layers": [1],
+	"direction": ["single"],
+	"dropout_rate": [0.2],
+	"task": ["premise"]
+}
