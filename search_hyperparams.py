@@ -127,7 +127,6 @@ def main():
 
         # Create job dir
         job_dir = create_job_dir(args.experiment_dir, job_name, params=param_config)
-        print("JOB DIR", job_dir)
 
         # Update the model directory
         args.model_dir = job_dir
