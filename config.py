@@ -1,5 +1,10 @@
+import resource
 import sys
 from pathlib import Path
+
+# Increase u limit
+rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+resource.setrlimit(resource.RLIMIT_NOFILE, (2048, rlimit[1]))
 
 PYTHON = sys.executable
 
