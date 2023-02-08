@@ -1,28 +1,22 @@
 #!/usr/bin/env python3
-from pickle import dump
-from pathlib import Path
-from typing import Tuple
-
 import torch
-from torch.nn.functional import binary_cross_entropy_with_logits
-from torch.optim import SGD
-from torch.optim.lr_scheduler import CyclicLR
-from tqdm import tqdm
 import argparse
 import numpy as np
-from collections import defaultdict
 import os
-
-from dataset import get_data_loader, BenchmarkType
-from model import Model
-from statistics import Writer
+from torch_geometric.transforms import ToUndirected
+import torch.nn.functional as F
+from typing import Tuple
 
 import config
+from dataset import get_data_loader, BenchmarkType
+from model import GNNStack
+from stats_writer import Writer
 
 
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
 
+    # TODO move to config??
     parser.add_argument("--train_id", default="id_files/train.txt", help="ID file used for training")
     parser.add_argument("--val_id", default="id_files/validation.txt", help="ID file used for validation")
     parser.add_argument(
@@ -31,133 +25,147 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--experiment_dir", default="experiments/premise/test", help="Directory for saving model and stats"
     )
-    parser.add_argument("--epochs", default=80, type=int, help="Number of training epochs.")
+    parser.add_argument("--epochs", default=config.EPOCHS, type=int, help="Number of training epochs.")
     parser.add_argument("--es_patience", default=None, type=int, help="Number of EarlyStopping epochs")
+
+    parser.add_argument("--graph_bidirectional", action="store_true", help="Makes the graphs bidirectional")
+    parser.add_argument(
+        "--graph_remove_argument_node", action="store_true", help="Removes the argument nodes from the graphs"
+    )
 
     return parser
 
 
-def batch_loss(model, batch, reduction="mean"):
-    batch = batch.to(config.device)
-    y = model(batch)
-    loss = binary_cross_entropy_with_logits(y, batch.y, reduction=reduction)
-    del batch
-    return y, loss
+def train_step(model, train_data, criterion, optimizer):
+    model.train()
+
+    for data in train_data:  # Iterate in batches over the training dataset.
+        data = data.to(config.device)
+        _, out = model(data)  # Perform a single forward pass.
+
+        loss = criterion(out, data.y)  # Compute the loss.
+        loss.backward()  # Derive gradients.
+        optimizer.step()  # Update parameters based on gradients.
+        optimizer.zero_grad()  # Clear gradients.
 
 
-def accuracy_matches(pred, actual) -> int:
+def test_step(model, test_data, writer: Writer, testing: bool) -> Tuple[float, float]:
+    model.eval()
 
-    # Convert to binary
-    predicted = torch.sigmoid(pred).round().long()
-    # Compute number of matches
-    correct = actual.eq(predicted).sum().item()
-    return correct
+    correct = 0
+    total_samples = 0
+    total_loss = 0.0
 
+    for data in test_data:  # Iterate in batches over the training/test dataset.
+        data = data.to(config.device)
+        _, out = model(data)
 
-def dataset_loss(model, dataset) -> Tuple[float, float]:
+        # Compute accuracy
+        pred = torch.sigmoid(out).round().long()
+        correct += data.y.eq(pred).sum().item()
 
-    losses = []
-    tot_correct, tot_predictions = 0, 0
+        # Compute loss
+        loss = F.binary_cross_entropy_with_logits(out, data.y, reduction="sum")
+        total_loss += loss
+        total_samples += len(pred)
 
-    with torch.no_grad():
-        for batch in tqdm(dataset):
-            y, loss = batch_loss(model, batch, reduction="none")
-            losses.extend(loss.numpy())
+    acc_score = correct / total_samples  # Derive ratio of correct predictions.
+    total_loss /= total_samples
+    total_loss = total_loss.item()
 
-            correct = accuracy_matches(y, batch.y)
-            tot_correct += correct
-            tot_predictions += len(batch.y)
+    if testing:
+        writer.report_val_score(acc_score)
+        writer.report_val_loss(total_loss)
+    else:
+        writer.report_train_score(acc_score)
+        writer.report_train_loss(total_loss)
 
-    mean_loss = float(np.mean(losses))
-    accuracy = 100 * (tot_correct / tot_predictions)
-    return mean_loss, accuracy
+    return total_loss, acc_score
 
 
 def main():
-
     # Get arguments
     parser = get_parser()
     args = parser.parse_args()
+
+    dataset_params = {}
+    if args.graph_bidirectional:
+        dataset_params["transform"] = ToUndirected()
+    if args.graph_remove_argument_node:
+        dataset_params["remove_argument_node"] = True
 
     # Make experiment dir if not exists
     if not os.path.exists(args.experiment_dir):
         os.makedirs(args.experiment_dir)
 
-    train_data = get_data_loader(args.train_id, args.benchmark_type)
-    val_data = get_data_loader(args.val_id, args.benchmark_type)
+    train_data = get_data_loader(args.train_id, args.benchmark_type, **dataset_params)
+    val_data = get_data_loader(args.val_id, args.benchmark_type, **dataset_params)
 
+    # TODO need to load experiment params!!!
     # Should take model parameters in another way?
-    model = Model().to(config.device)
-    optimizer = SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4, nesterov=True)
-    scheduler = CyclicLR(optimizer, 0.01, 0.1, mode="exp_range", gamma=0.99995, step_size_up=4000)
+    # model = Model().to(config.device)
+    model = GNNStack(
+        hidden_dim=16,
+        num_convolutional_layers=1,
+        no_dense_layers=1,
+        direction="single",
+        dropout_rate=0.2,
+        task="premise",
+    )
+    model = model.to(config.device)
 
-    # TODO what is this writer?
-    stats = Writer(model)
-    best_loss = torch.tensor(float("inf"))
+    # Initialise writer
+    writer = Writer(model)
 
+    # Training optimisers
+    # optimizer = SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4, nesterov=True)
+    # scheduler = CyclicLR(optimizer, 0.01, 0.1, mode="exp_range", gamma=0.99995, step_size_up=4000)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+    criterion = torch.nn.BCEWithLogitsLoss(reduction="mean")
+
+    # Set up training
     if args.es_patience is not None:
         print(f"Early Stopping is set to: {args.es_patience}")
         es_wait = 0
         es_best_loss = np.inf
+    else:
+        es_wait, es_best_loss = None, None
 
-    metrics = defaultdict(list)
     for epoch in range(0, args.epochs):
-        print("Epoch", epoch)
-        stats.report_model_parameters()
 
-        print("Training...")
-        model.train()
-        for batch in tqdm(train_data):
-            optimizer.zero_grad()
-            y, loss = batch_loss(model, batch)
-            loss.backward()
-            optimizer.step()
-            scheduler.step()
+        train_step(model, train_data, criterion, optimizer)
+        # writer.report_model_parameters() FIXME
 
-            # TODO this is somewhat wrong as the batch size may vary?
-            stats.report_train_loss(loss.mean())
-            if stats.step % 32 == 0:
-                stats.report_output(batch.y, torch.sigmoid(y))
-            stats.on_step()
-
-        print("Validating...")
-        model.eval()
-        train_loss, train_acc = dataset_loss(model, train_data)
-        metrics["train_loss"].append(train_loss)
-        metrics["train_acc"].append(train_acc)
-
-        val_loss, val_acc = dataset_loss(model, val_data)
-        metrics["val_loss"].append(val_loss)
-        metrics["val_acc"].append(val_acc)
-        stats.report_validation_loss(val_loss)
-
-        # Save the model after every iteration
-        torch.save(model.state_dict(), os.path.join(args.experiment_dir, "model_gnn.pt"))
+        train_loss, train_acc = test_step(model, train_data, writer, testing=False)
+        test_loss, test_acc = test_step(model, val_data, writer, testing=True)
+        print(
+            f"Epoch: {epoch:03d}, Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}, "
+            f"Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}"
+        )
 
         # Check for early stopping
         if args.es_patience is not None:
             es_wait += 1
-            if metrics["val_loss"][-1] < es_best_loss:
-                es_best_loss = metrics["val_loss"][-1]
+            if test_loss < es_best_loss:
+                es_best_loss = test_loss
                 es_wait = 0
+                # Always save the best model
+                torch.save(model.state_dict(), os.path.join(args.experiment_dir, "model_gnn.pt"))
             elif es_wait >= args.es_patience:
                 print(f"Terminated training with early stopping after {es_wait} epochs of no improvement")
                 break
+        else:
+            # Always save model if no ES
+            torch.save(model.state_dict(), os.path.join(args.experiment_dir, "model_gnn.pt"))
 
-        # Report epoch metrics
-        print(f"Val loss: {val_loss:.3E}")
-        print(f"Val acc : {val_acc:.3E}")
-        print(f"Train loss: {train_loss:.3E}")
-        print(f"Train acc : {train_acc:.3E}")
-        print()
+        # Increment epoch for next iteration
+        writer.on_step()
 
     # Save the training history
-    print(metrics)
-    with open(os.path.join(args.experiment_dir, "history.pkl"), "wb") as f:
-        dump(metrics, f)
+    writer.save_scores(args.experiment_dir)
 
 
 if __name__ == "__main__":
-    torch.manual_seed(0)
+    torch.manual_seed(1234)
     main()
     print("# Finished")

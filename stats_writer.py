@@ -1,6 +1,7 @@
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 from collections import defaultdict
+from typing import Dict, List
 import pickle
 import os
 
@@ -24,7 +25,7 @@ class Writer:
         with open(os.path.join(path, "history.pkl"), "wb") as f:
             pickle.dump(self.get_scores(), f)
 
-    def get_scores(self):
+    def get_scores(self) -> Dict[str, List[float]]:
         return self.scalar_dict
 
     def on_step(self):
