@@ -1,15 +1,131 @@
 from pathlib import Path
 import torch
-from torch_geometric.data import Data, InMemoryDataset, Dataset
+from torch.utils.data import DataLoader
+from torch_geometric.data import Data, InMemoryDataset, Batch, Dataset
 from tqdm import tqdm
 import os
+from typing import List, Sequence
+from enum import Enum
+import networkx as nx
+from itertools import product
 
-from parser import graph
-from utils import read_problem_deepmath, read_problem_tptp
+import config
+from graph_parser import graph
+
+from read_problem import read_problem_deepmath, read_problem_tptp
 
 
-def construct_graph(conjecture, premises):
+class BenchmarkType(Enum):
+    DEEPMATH = "deepmath"
+    TPTP = "tptp"
+
+    def __str__(self):
+        return self.value
+
+
+def load_ids(id_file) -> List[str]:
+    with open(id_file, "r") as f:
+        ids = f.readlines()
+
+    return [i.strip() for i in ids]
+
+
+def _process_problem(
+    problem: str,
+    problem_dir: str,
+    benchmark_type: BenchmarkType,
+    remove_argument_node: bool,
+    pre_filter=None,
+    pre_transform=None,
+) -> Data:
+
+    # Read the problem
+    conjecture, premises, target = read_problem_from_file(benchmark_type, problem_dir, problem)
+
+    # Construct the data point
+    data = construct_graph(conjecture, premises, remove_argument_node=remove_argument_node)
+    data.name = Path(problem).stem
+    if target is not None:
+        data.y = torch.tensor(target)
+
+    if pre_filter is not None:
+        data = pre_filter(data)
+
+    if pre_transform is not None:
+        data = pre_transform(data)
+
+    return data
+
+
+def read_problem_from_file(benchmark_type, problem_dir, problem):
+    target = None
+    if benchmark_type is BenchmarkType.DEEPMATH:
+        conjecture, premises, target = read_problem_deepmath(problem_dir, problem)
+    elif benchmark_type is BenchmarkType.TPTP:
+        conjecture, premises = read_problem_tptp(problem_dir, problem)
+    else:
+        raise ValueError(f"Not implemented problem loader for benchmark {benchmark_type}")
+
+    return conjecture, premises, target
+
+
+def remove_node_type(nodes, sources, targets, premise_indices, conjecture_indices, node_type=4):
+    # Check if node type exists in the graph
+    if node_type not in nodes:
+        return nodes, sources, targets, premise_indices, conjecture_indices
+
+    # Convert into a networkx Directional graph
+    G = nx.DiGraph()
+    G.add_edges_from(list(zip(sources, targets)))
+
+    # Transfer the node types
+    attr = {i: t for i, t in enumerate(nodes)}
+    nx.set_node_attributes(G, attr, name="type")
+
+    # Remove the given node type
+    for node_id in list(G.nodes):
+
+        # Check if node is of the correct type
+        if G.nodes[node_id]["type"] != node_type:
+            continue
+
+        # Get all in/out edges and remap current node
+        in_nodes = [a for a, b in G.in_edges(node_id)]
+        out_nodes = [b for a, b in G.out_edges(node_id)]
+
+        new_edges = list(product(*[in_nodes, out_nodes]))
+        G.add_edges_from(new_edges)
+
+        # Finally remove the node
+        G.remove_node(node_id)
+
+    # Remap and restructure indices to get it back to the original format
+    node_map = {i: n for n, i in enumerate(list(G.nodes))}
+    map_node = {n: i for n, i in enumerate(list(G.nodes))}
+
+    new_targets = [t for s, t in G.edges]
+    new_targets = list(map(node_map.get, new_targets))
+
+    new_sources = [s for s, t in G.edges]
+    new_sources = list(map(node_map.get, new_sources))
+
+    new_nodes = [G.nodes[map_node[n]]["type"] for n in range(len(map_node))]
+
+    new_premise_indices = list(map(node_map.get, premise_indices))
+    new_conjecture_indices = list(map(node_map.get, conjecture_indices))
+
+    return new_nodes, new_sources, new_targets, new_premise_indices, new_conjecture_indices
+
+
+def construct_graph(conjecture: List[str], premises: List[str], remove_argument_node=False) -> Data:
+    # Parse the formulae into a graph
     nodes, sources, targets, premise_indices, conjecture_indices = graph(conjecture, premises)
+
+    if remove_argument_node:
+        nodes, sources, targets, premise_indices, conjecture_indices = remove_node_type(
+            nodes, sources, targets, premise_indices, conjecture_indices
+        )
+
     x = torch.tensor(nodes)
     edge_index = torch.tensor([sources, targets])
     premise_index = torch.tensor(premise_indices)
@@ -19,135 +135,175 @@ def construct_graph(conjecture, premises):
     return data
 
 
-class DeepMathDataset(InMemoryDataset):
-    def __init__(self, root, name, transform=None, pre_transform=None):
-        self.root = root
-        self.name = name
-        super().__init__(root, transform, pre_transform)
+class TorchLoadDataset(Dataset):
+    def __init__(
+        self,
+        id_file: str,
+        benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH,
+        transform=None,
+        pre_transform=None,
+        remove_argument_node: bool = False,
+    ):
+        self.root = Path(".")
+        self.id_file = id_file
+        self.id_partition = Path(id_file).stem
+        self.benchmark_type = benchmark_type
+        self.problem_dir = config.BENCHMARK_PATHS[str(benchmark_type)]
+        self.remove_argument_node = remove_argument_node
+
+        # Load problem ids
+        self.problem_ids = load_ids(id_file)
+
+        # Initialise the super
+        super().__init__(self.root.name, transform, pre_transform)
+
+    @property
+    def raw_file_names(self) -> List[str]:
+        # These are the ids and not really the raw names
+        return self.problem_ids
+
+    @property
+    def processed_file_names(self) -> List[str]:
+        return [f"{self.benchmark_type}_{p}.pt" for p in self.problem_ids]
+
+    def len(self) -> int:
+        return len(self.raw_file_names)
+
+    def get(self, idx: int) -> Data:
+        data = torch.load(
+            os.path.join(self.processed_dir, f"{self.benchmark_type}_{idx}.pt")
+        )  # The ids are now the processed names
+        return data
+
+    def indices(self) -> Sequence:
+        return self.problem_ids
+
+    def process(self):
+        for problem in tqdm(self.raw_file_names):
+
+            data = _process_problem(
+                problem,
+                self.problem_dir,
+                self.benchmark_type,
+                self.remove_argument_node,
+                pre_filter=self.pre_filter,
+                pre_transform=self.pre_transform,
+            )
+
+            out_file = Path(self.processed_dir) / f"{self.benchmark_type}_{problem}.pt"
+            torch.save(data, out_file)
+
+
+class TorchMemoryDataset(InMemoryDataset):
+    def __init__(
+        self,
+        id_file: str,
+        benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH,
+        transform=None,
+        pre_transform=None,
+        remove_argument_node: bool = False,
+    ):
+        self.root = Path(".")
+        self.id_file = id_file
+        self.id_partition = Path(id_file).stem
+        self.benchmark_type = benchmark_type
+        self.problem_dir = config.BENCHMARK_PATHS[str(benchmark_type)]
+        self.remove_argument_node = remove_argument_node
+
+        # Load problem ids
+        self.problem_ids = load_ids(id_file)
+
+        # Initialise the super
+        super().__init__(self.root.name, transform, pre_transform)
+
+        # Start process of getting the data
         self.data, self.slices = torch.load(self.processed_paths[0])
 
     @property
-    def raw_file_names(self):
-        return [f"{self.name}"]
+    def raw_file_names(self) -> List[str]:
+        # These are the ids and not really the raw names
+        return self.problem_ids
 
     @property
-    def processed_file_names(self):
-        stem = Path(self.name).stem
-        return [f"{stem}.pt"]
+    def processed_file_names(self) -> List[str]:
+        # return [Path(prob).stem + ".pt" for prob in self.problems]
+        return [f"{self.benchmark_type}_{self.id_partition}.pt"]
+
+    def len(self) -> int:
+        return len(self.raw_file_names)
+
+    """
+    def get(self, idx: int) -> Data:
+        data = torch.load(os.path.join(self.processed_dir, str(idx)))  # The ids are now the processed names
+        return data
+        """
 
     def process(self):
         data_list = []
-        with open(self.raw_paths[0], "r") as problems:
-            for problem in tqdm(problems):
-                # Extract info from the problem
-                # conjecture, premises, target = read_problem_deepmath(problem, self.root) TODO
-                print(problem)
-                # conjecture, premises = read_problem_tptp(problem, 'merged_problems')
-                conjecture, premises = read_problem_tptp(
-                    problem,
-                    "/shareddata/home/holden/axiom_caption/generated_problems/analysis/output_original_unquoted_sine_1_1/",
-                )
-                # Construct the data point
-                data = construct_graph(conjecture, premises)
-                # Add problem name
-                data.name = problem.strip()
-                # Add targets
-                # data.y = torch.tensor(target) TODO
-                # Append the final datapoint to the data list
-                data_list.append(data)
+
+        for problem in tqdm(self.raw_file_names):
+
+            data = _process_problem(
+                problem,
+                self.problem_dir,
+                self.benchmark_type,
+                self.remove_argument_node,
+                pre_filter=self.pre_filter,
+                pre_transform=self.pre_transform,
+            )
+
+            # Append the final datapoint to the data list
+            data_list.append(data)
+
         data, slices = self.collate(data_list)
         out = Path(self.processed_dir) / self.processed_file_names[0]
         torch.save((data, slices), out)
 
 
-class LTBDataset(Dataset):
-    def __init__(self, root, name, caption=None, transform=None, pre_transform=None):
+def get_data_loader(
+    id_file,
+    benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH,
+    in_memory: bool = True,
+    batch_size: int = config.BATCH_SIZE,
+    shuffle: bool = True,
+    **kwargs,
+) -> DataLoader:
 
-        print("root ", root)
-        root = os.path.join(root, name.split(".")[0])  # Make a separate folder for this data
-        print("root ", root)
-        self.root = root
-        self.name = name
-        self.caption = caption
-        print("CAPTION ", caption)
+    if in_memory:
+        dataset = TorchMemoryDataset(id_file, benchmark_type, **kwargs)
+    else:
+        dataset = TorchLoadDataset(id_file, benchmark_type, **kwargs)
+    kwargs.pop("transform", None)
+    kwargs.pop("remove_argument_node", None)
+    print("Dataset:", dataset)
 
-        # Load problem ids
-        with open("raw/" + self.name, "r") as problems:
-            self.problems = [prob.strip() for prob in list(problems)]
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        collate_fn=Batch.from_data_list,
+        shuffle=shuffle,
+        pin_memory=True,
+        num_workers=8,
+        **kwargs,
+    )
 
-        super().__init__(root, transform, pre_transform)
 
-    @property
-    def raw_file_names(self):
-        return self.problems
+def test_dataset():
+    dataset = TorchLoadDataset("id_files/dev_100.txt", BenchmarkType("deepmath"))
+    # dataset = TorchMemoryDataset("id_files/dev_100.txt", BenchmarkType("deepmath"))
+    print(dataset)
+    print(len(dataset))
 
-    @property
-    def processed_file_names(self):
-        return [prob.split(".")[0] + ".pt" for prob in self.problems]
 
-    def len(self):
-        return len(self.processed_file_names)
-
-    # Need to overwrite this function to operate on the problem names
-    def indices(self):
-        return self.processed_file_names
-
-    def get(self, idx):
-        data = torch.load(os.path.join(self.processed_dir, idx))  # The ids are now the processed names
-        return data
-
-    def process(self):
-
-        print("processed_dir ", self.processed_dir)
-        print("caption ", self.caption)
-        # print(self.problems)
-
-        for problem in tqdm(self.problems):
-            # Read the problem caption
-            print("pre read: problem ", problem)
-            conjecture, axioms = read_problem_tptp(problem, self.caption)
-            # Construct the data point
-            data = construct_graph(conjecture, axioms)
-            # Add problem name
-            data.name = problem.strip()
-
-            # Save the data instance
-            save_path = os.path.join(self.processed_dir, problem.split(".")[0] + ".pt")
-            torch.save(data, save_path)
+def test_data_loader():
+    loader = get_data_loader("id_files/dev_100.txt", BenchmarkType("deepmath"))
+    print(loader)
 
 
 if __name__ == "__main__":
-
-    # TODO clean up this mess!
-    """
-    print(Path(__file__).parent)
-    print("# Validation")
-    validate = DeepMathDataset(Path(__file__).parent, 'validation.txt')
-    print(validate)
-    #"""
-    """
-    print("# Testing")
-    test = DeepMathDataset(Path(__file__).parent, 'test.txt')
-    print(test)
-    print("# Training")
-    train = DeepMathDataset(Path(__file__).parent, 'train.txt')
-    print(train)
-    """
-
-    d = LTBDataset(
-        "graph_data",
-        "axiom_caption_test.txt",
-        caption="/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/",
-    )
-    # d = LTBDataset(Path(__file__).parent, 'jjt_fof_sine_1_0.txt', caption='/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/')
-    """
-    d = LTBDataset(
-        'graph_data',
-        'jjt_fof_sine_1_0.txt',
-        caption='/home/eholden/axiom_caption/data/processed/jjt_sine_1_0/')
-    #print(d.get('JJT00001+1'))
-    #"""
-
-    print(d)
-    # print(d.raw_file_names)
-    # print(d.processed_file_names)
+    print(1)
+    test_dataset()
+    print(2)
+    test_data_loader()
+    print(3)
+    print(TorchLoadDataset("id_files/dev_100.txt"))

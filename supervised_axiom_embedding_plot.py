@@ -13,7 +13,7 @@ from matplotlib.colors import ListedColormap
 import numpy as np
 
 from model import Model
-from common import mk_loader
+from dataset import get_data_loader
 import config
 from extract_features import encode, get_activation
 
@@ -36,7 +36,7 @@ PALETTE = {0: "C0", 1: "C1"}
 def get_embedding_data(model, id_file):
 
     # Get set of problems
-    data = mk_loader(Path(__file__).parent, id_file, batch_size=1, shuffle=False)
+    data = get_data_loader(Path(__file__).parent, id_file, batch_size=1, shuffle=False)
     print("Number of problems: ", len(data))
 
     # Compute model embeddings

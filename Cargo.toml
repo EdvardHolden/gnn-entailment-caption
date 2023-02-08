@@ -1,0 +1,22 @@
+[package]
+name = "graph_parser"
+version = "0.1.0"
+authors = ["Michael Rawson <michael@rawsons.uk>"]
+edition = "2018"
+
+[lib]
+name = "parser"
+crate-type = ["cdylib"]
+
+[dependencies]
+numpy = "0.15"
+petgraph = "0.6"
+tptp = "0.30"
+
+[dependencies.pyo3]
+version = "0.15"
+features = ["extension-module"]
+
+[profile.release]
+codegen-units = 1
+lto = true

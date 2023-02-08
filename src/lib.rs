@@ -278,7 +278,7 @@ impl<'v> Visitor<'v> for GraphBuilder {
 }
 
 #[pymodule]
-fn parser(_py: Python, module: &PyModule) -> PyResult<()> {
+fn graph_parser(_py: Python, module: &PyModule) -> PyResult<()> {
     type LongTensor = PyArray1<i64>;
 
     #[pyfn(module)]

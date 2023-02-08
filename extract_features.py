@@ -8,7 +8,8 @@ import numpy as np
 import argparse
 
 from model import Model
-from common import mk_loader_ltb, mk_loader
+from common import mk_loader_ltb
+from dataset import get_data_loader
 import config
 
 parser = argparse.ArgumentParser()
@@ -19,7 +20,7 @@ parser.add_argument(
     help="The type of nodes to use in the final embedding",
 )
 parser.add_argument("--model_path", default="model.pt", help="Path to the model used for embedding")
-parser.add_argument("--id_file", default="deepmath.txt", help="Name of the ID file found in raw/")
+parser.add_argument("--id_file", default="deepmath.txt", help="Name of the ID file found in id_files/")
 parser.add_argument(
     "--print_distances",
     action="store_true",
@@ -58,7 +59,7 @@ def get_activation(name):
 
 
 def encode(model, data, nodes=None):
-    model.eval()  # Trick to make sure the batchnormalisation does not mess up
+    model.eval()  # Trick to make sure the batch-normalisation does not mess up
 
     embeddings = {}
     with torch.no_grad():
@@ -108,7 +109,7 @@ def main():
         )
     else:
         # data = mk_loader("graph_data", args.id_file, batch_size=1, shuffle=False)
-        data = mk_loader(Path(__file__).parent, args.id_file, batch_size=1, shuffle=False)
+        data = get_data_loader(Path(__file__).parent, args.id_file, batch_size=1, shuffle=False)
 
     print("Number of problems: ", len(data))
 

@@ -3,11 +3,11 @@ from pathlib import Path
 import torch
 from tqdm import tqdm
 
-from common import mk_loader
+from dataset import get_data_loader
 from model import Model
 
 import config
-from utils import read_problem_deepmath
+from read_problem import read_problem_deepmath
 
 DEST = "generated_problems_merged_retry/"
 
@@ -51,7 +51,7 @@ def eval():
     # data_ids = "single.txt"
     # data_ids = "deepmath.txt"
     data_ids = "deepmath_merged.txt"
-    data = mk_loader(Path(__file__).parent, data_ids, batch_size=1)
+    data = get_data_loader(Path(__file__).parent, data_ids, batch_size=1)
 
     # Laod and prepare model
     model = Model(17).to(config.device)

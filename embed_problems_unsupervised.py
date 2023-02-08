@@ -24,7 +24,7 @@ import networkx as nx
 from tqdm.contrib.concurrent import process_map  # or thread_map
 
 from parser import graph
-from utils import read_problem_deepmath
+from read_problem import read_problem_deepmath
 
 # Base names and parameters
 IDX_BASE_NAME = "target.pkl"
@@ -34,10 +34,12 @@ BATCH_SIZE = 32
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--train_id_file", default="train.txt", help="Name of the file containing the training data in raw/"
+    "--train_id_file", default="train.txt", help="Name of the file containing the training data in id_files/"
 )
 parser.add_argument(
-    "--val_id_file", default="validation.txt", help="Name of the file containing the training data in raw/"
+    "--val_id_file",
+    default="validation.txt",
+    help="Name of the file containing the training data in id_files/",
 )
 
 if socket.gethostname() == "kontor":
@@ -99,6 +101,8 @@ es = tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=3)
 
 # For the different axiom types we manually create an embedding layer for mapping
 # the types to the embedding space. This creates or loads and existing embedding layer
+# tODO should be a function!
+
 embedding_path = "embedding_layer"
 if not os.path.exists(embedding_path):
     # Initialise the embedding layer
@@ -151,7 +155,7 @@ def compute_graph(problem, problem_dir, embed_nodes=True):
 
 def get_problem_ids(id_file):
 
-    with open(os.path.join("raw", id_file), "r") as f:
+    with open(os.path.join("id_files", id_file), "r") as f:
         ids = f.readlines()
     return ids
 
