@@ -20,7 +20,11 @@ def get_train_parser() -> argparse.ArgumentParser:
     parser.add_argument("--train_id", default=config.TRAIN_ID, help="ID file used for training")
     parser.add_argument("--val_id", default=config.VAL_ID, help="ID file used for validation")
     parser.add_argument(
-        "--benchmark_type", default="deepmath", type=BenchmarkType, help="Benchmark type fo the problems."
+        "--benchmark_type",
+        default="deepmath",
+        choices=BenchmarkType.list(),
+        type=BenchmarkType,
+        help="Benchmark type fo the problems.",
     )
     parser.add_argument(
         "--experiment_dir", default="experiments/premise/test", help="Directory for saving model and stats"
@@ -33,6 +37,7 @@ def get_train_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--learning_task",
         default="premise",
+        choices=LearningTask.list(),
         type=LearningTask,
         help="Learning task for training the GCN model",
     )
@@ -112,7 +117,7 @@ def main():
 
     # Initialise model
     model_params = load_model_params(args.experiment_dir)
-    model_params['task'] = args.learning_task  # Set task from input
+    model_params["task"] = args.learning_task  # Set task from input
     model = GNNStack(**model_params)
     model = model.to(config.device)
 

@@ -26,6 +26,10 @@ class BenchmarkType(Enum):
     def __str__(self):
         return self.value
 
+    @classmethod
+    def list(cls):
+        return list(map(lambda c: c.value, cls))
+
 
 class LearningTask(Enum):
 
@@ -34,6 +38,10 @@ class LearningTask(Enum):
 
     def __str__(self):
         return self.value
+
+    @classmethod
+    def list(cls):
+        return list(map(lambda c: c.value, cls))
 
 
 def load_ids(id_file) -> List[str]:
