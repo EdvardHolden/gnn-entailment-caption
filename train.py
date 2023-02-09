@@ -5,6 +5,9 @@ import argparse
 import numpy as np
 import os
 from torch_geometric.transforms import ToUndirected
+import torch_geometric as pyg
+import torch_geometric.nn as pyg_nn
+import torch.nn as nn
 import torch.nn.functional as F
 from typing import Tuple
 
@@ -24,7 +27,7 @@ def get_train_parser() -> argparse.ArgumentParser:
         default="deepmath",
         choices=BenchmarkType.list(),
         type=BenchmarkType,
-        help="Benchmark type fo the problems.",
+        help="Benchmark type of the problems.",
     )
     parser.add_argument(
         "--experiment_dir", default="experiments/premise/test", help="Directory for saving model and stats"
@@ -38,7 +41,6 @@ def get_train_parser() -> argparse.ArgumentParser:
         "--learning_task",
         default="premise",
         choices=LearningTask.list(),
-        type=LearningTask,
         help="Learning task for training the GCN model",
     )
 
@@ -50,23 +52,31 @@ def get_train_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def train_step(model, train_data, criterion, optimizer):
+def train_step(model: nn.Module, train_data: pyg.loader.DataLoader, criterion, optimizer) -> None:
     model.train()
 
     for data in train_data:  # Iterate in batches over the training dataset.
         data = data.to(config.device)
         _, out = model(data)  # Perform a single forward pass.
 
-        loss = criterion(out, data.y)  # Compute the loss.
+        loss = criterion(out, data.y, reduction="mean")  # Compute the loss.
         loss.backward()  # Derive gradients.
         optimizer.step()  # Update parameters based on gradients.
         optimizer.zero_grad()  # Clear gradients.
 
 
-def test_step(model, test_data, writer: Writer, testing: bool) -> Tuple[float, float]:
+def test_step(
+    model: nn.Module,
+    test_data: pyg.loader.DataLoader,
+    writer: Writer,
+    criterion,
+    task: LearningTask,
+    testing: bool,
+) -> Tuple[float, float]:
+
     model.eval()
 
-    correct = 0
+    score = 0
     total_samples = 0
     total_loss = 0.0
 
@@ -74,33 +84,40 @@ def test_step(model, test_data, writer: Writer, testing: bool) -> Tuple[float, f
         data = data.to(config.device)
         _, out = model(data)
 
-        # Compute accuracy
-        pred = torch.sigmoid(out).round().long()
-        correct += data.y.eq(pred).sum().item()
+        # Compute score
+        if task == LearningTask.PREMISE:
+            # Premise used accuracy
+            pred = torch.sigmoid(out).round().long()
+            score += data.y.eq(pred).sum().item()
+        elif task == LearningTask.SIMILARITY:
+            score = F.l1_loss(out, data.y, reduction="sum")
+        else:
+            raise ValueError()
 
         # Compute loss
-        loss = F.binary_cross_entropy_with_logits(out, data.y, reduction="sum")
+        loss = criterion(out, data.y, reduction="sum")
         total_loss += loss
-        total_samples += len(pred)
+        total_samples += len(out)
 
-    acc_score = correct / total_samples  # Derive ratio of correct predictions.
+    score = score / total_samples  # Derive average score
     total_loss /= total_samples
     total_loss = total_loss.item()
 
     if testing:
-        writer.report_val_score(acc_score)
+        writer.report_val_score(score)
         writer.report_val_loss(total_loss)
     else:
-        writer.report_train_score(acc_score)
+        writer.report_train_score(score)
         writer.report_train_loss(total_loss)
 
-    return total_loss, acc_score
+    return total_loss, score
 
 
 def main():
     # Get arguments
     parser = get_train_parser()
     args = parser.parse_args()
+    learning_task = LearningTask(args.learning_task)
 
     dataset_params = {}
     if args.graph_bidirectional:
@@ -117,7 +134,7 @@ def main():
 
     # Initialise model
     model_params = load_model_params(args.experiment_dir)
-    model_params["task"] = args.learning_task  # Set task from input
+    model_params["task"] = learning_task  # Set task from input
     model = GNNStack(**model_params)
     model = model.to(config.device)
 
@@ -129,8 +146,13 @@ def main():
     # scheduler = CyclicLR(optimizer, 0.01, 0.1, mode="exp_range", gamma=0.99995, step_size_up=4000)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
-    # TODO change criterion thing here!
-    criterion = torch.nn.BCEWithLogitsLoss(reduction="mean")
+    # Select criterion loss based on learning task
+    if learning_task == LearningTask.PREMISE:
+        criterion = F.binary_cross_entropy_with_logits
+    elif learning_task == LearningTask.SIMILARITY:
+        criterion = F.mse_loss
+    else:
+        raise ValueError(f'Cannot select cooperation based on task {learning_task}')
 
     # Set up training
     if args.es_patience is not None:
@@ -145,8 +167,8 @@ def main():
         train_step(model, train_data, criterion, optimizer)
         # writer.report_model_parameters() # FIXME - crashes for unknown reason...
 
-        train_loss, train_acc = test_step(model, train_data, writer, testing=False)
-        test_loss, test_acc = test_step(model, val_data, writer, testing=True)
+        train_loss, train_acc = test_step(model, train_data, writer, criterion, learning_task, testing=False)
+        test_loss, test_acc = test_step(model, val_data, writer, criterion, learning_task, testing=True)
         print(
             f"Epoch: {epoch:03d}, Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}, "
             f"Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}"

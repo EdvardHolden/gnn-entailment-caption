@@ -3,7 +3,7 @@ import json
 import torch
 from torch.nn import Embedding
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, Linear, MessagePassing
+from torch_geometric.nn import GCNConv, Linear, MessagePassing, global_mean_pool
 import torch.nn as nn
 from typing import Callable, Optional, Dict
 
@@ -271,6 +271,33 @@ class GNNStack(torch.nn.Module):
         x = self.post_mp(x[premise_index])
 
         return emb, x
+
+
+class GNNStackSiamese(GNNStack):
+    def __init__(self, **kwargs):
+        kwargs["task"] = LearningTask.SIMILARITY
+        super(GNNStackSiamese, self).__init__(**kwargs)
+
+    def forward(self, data):
+        x_s, edge_index_s = data.x_s, data.edge_index_s
+        x_t, edge_index_t = data.x_t, data.edge_index_t
+
+        x_s = self.node_embedding(x_s)
+        x_t = self.node_embedding(x_t)
+
+        emb_s, x_s = self.gcn(x_s, edge_index_s)
+        emb_t, x_s = self.gcn(x_s, edge_index_s)
+
+        # Pool the graph
+        x_s = global_mean_pool(x_s, data.x_s_batch)
+        x_t = global_mean_pool(x_t, data.x_t_batch)
+
+        # Concat embeddings
+        x = torch.cat((x_s, x_t), dim=1)
+
+        x = self.post_mp(x)
+
+        return (emb_s, emb_t), x
 
 
 if __name__ == "__main__":
