@@ -280,7 +280,7 @@ class PairData(Data):
         x_s: torch.Tensor,
         edge_index_t: torch.Tensor,
         x_t: torch.Tensor,
-        y: float,
+        y: torch.Tensor,
     ):
         super().__init__()
         self.edge_index_s = edge_index_s
@@ -321,7 +321,7 @@ def get_pair_dataset(dataset, dataset_path) -> List[PairData]:
             x_s=data_s.x,
             edge_index_t=data_t.edge_index,
             x_t=data_t.x,
-            y=target,
+            y=torch.tensor(target),
         )
 
         # Add to list

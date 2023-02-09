@@ -8,6 +8,7 @@ import torch.nn as nn
 from typing import Callable, Optional, Dict
 
 import config
+from dataset import LearningTask
 
 GCN_NORMALISATION = {"batch": nn.BatchNorm1d, "layer": nn.LayerNorm}
 
@@ -19,34 +20,41 @@ def load_model_params(model_dir: str) -> Dict:
     return params
 
 
-def get_dense_output_network(
-    no_dense_layers: int, hidden_dim: int, task: str, dropout_rate: float
-) -> nn.Module:
-    if task == "premise":
-        return DensePremiseOutput(no_dense_layers, hidden_dim, dropout_rate)
+def get_dense_output_network(task: LearningTask, no_dense_layers: int, hidden_dim: int, dropout_rate: float):
+    if task == LearningTask.PREMISE:
+        return DenseOutput(hidden_dim, no_dense_layers, hidden_dim, dropout_rate)
+    elif task == LearningTask.SIMILARITY:
+        return DenseOutput(hidden_dim * 2, no_dense_layers, hidden_dim, dropout_rate)
     else:
-        raise NotImplementedError
+        raise ValueError(f"No dense output network for: {task}")
 
 
-class DensePremiseOutput(torch.nn.Module):
-    def __init__(self, no_dense_layers, hidden_dim, dropout_rate):
-        super(DensePremiseOutput, self).__init__()
+class DenseOutput(torch.nn.Module):
+    def __init__(self, input_dim: int, no_dense_layers: int, hidden_dim: int, dropout_rate: float):
+        super(DenseOutput, self).__init__()
 
+        self.input_dim = input_dim
         self.no_dense_layers = no_dense_layers
         self.hidden_dim = hidden_dim
         self.dropout_rate = dropout_rate
 
-        self.lin = nn.ModuleList()
-        for _ in range(no_dense_layers):
-            self.lin.append(nn.Linear(hidden_dim, hidden_dim))
+        self._build_network()
 
-        # Add output layer
-        self.out = nn.Linear(hidden_dim, 1)
+    def _build_network(self):
 
-    def forward(self, x, premise_index):
+        if self.no_dense_layers <= 0:  # No hidden layer
+            self.out = nn.Linear(self.input_dim, 1)
+        else:
+            # Add input layer
+            self.lin = nn.ModuleList()
+            self.lin.append(nn.Linear(self.input_dim, self.hidden_dim))
+            # Ad dense layers
+            for _ in range(self.no_dense_layers - 1):
+                self.lin.append(nn.Linear(self.hidden_dim, self.hidden_dim))
+            # Add output layer
+            self.out = nn.Linear(self.hidden_dim, 1)
 
-        # Extract premises
-        x = x[premise_index]
+    def forward(self, x):
 
         # Dense feedforward
         for i in range(self.no_dense_layers):
@@ -212,14 +220,14 @@ class GCNBiDirectional(torch.nn.Module):
 class GNNStack(torch.nn.Module):
     def __init__(
         self,
-        hidden_dim,
-        num_convolutional_layers,
-        no_dense_layers,
-        direction,
-        dropout_rate=0.0,
-        task="premise",
+        hidden_dim: int,
+        num_convolutional_layers: int,
+        no_dense_layers: int,
+        direction: str,
+        dropout_rate: float = 0.0,
+        task: LearningTask = LearningTask.PREMISE,
         normalisation="layer",
-        skip_connection=True,
+        skip_connection: bool = True,
     ):
         super(GNNStack, self).__init__()
 
@@ -249,7 +257,7 @@ class GNNStack(torch.nn.Module):
 
         # Post-message-passing
         self.post_mp = get_dense_output_network(
-            no_dense_layers, hidden_dim, task=self.task, dropout_rate=self.dropout_rate
+            self.task, no_dense_layers, hidden_dim, dropout_rate=self.dropout_rate
         )
 
     def forward(self, data):
@@ -259,10 +267,8 @@ class GNNStack(torch.nn.Module):
 
         emb, x = self.gcn(x, edge_index)
 
-        if self.task == "premise":
-            x = self.post_mp(x, premise_index)
-        else:
-            raise NotImplementedError()
+        # Call feedforward layer on the premise indexes
+        x = self.post_mp(x[premise_index])
 
         return emb, x
 
@@ -275,6 +281,6 @@ if __name__ == "__main__":
         no_dense_layers=1,
         direction="single",
         dropout_rate=0.25,
-        task="premise",
+        # task="premise",
     )
     print(test_model)

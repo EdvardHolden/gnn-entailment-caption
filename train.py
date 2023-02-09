@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from typing import Tuple
 
 import config
-from dataset import get_data_loader, BenchmarkType
+from dataset import get_data_loader, BenchmarkType, LearningTask
 from model import GNNStack, load_model_params
 from stats_writer import Writer
 
@@ -28,6 +28,13 @@ def get_train_parser() -> argparse.ArgumentParser:
     parser.add_argument("--epochs", default=config.EPOCHS, type=int, help="Number of training epochs.")
     parser.add_argument(
         "--es_patience", default=config.ES_PATIENCE, type=int, help="Number of EarlyStopping epochs"
+    )
+
+    parser.add_argument(
+        "--learning_task",
+        default="premise",
+        type=LearningTask,
+        help="Learning task for training the GCN model",
     )
 
     parser.add_argument("--graph_bidirectional", action="store_true", help="Makes the graphs bidirectional")
@@ -105,6 +112,7 @@ def main():
 
     # Initialise model
     model_params = load_model_params(args.experiment_dir)
+    model_params['task'] = args.learning_task  # Set task from input
     model = GNNStack(**model_params)
     model = model.to(config.device)
 
@@ -115,6 +123,8 @@ def main():
     # optimizer = SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4, nesterov=True)
     # scheduler = CyclicLR(optimizer, 0.01, 0.1, mode="exp_range", gamma=0.99995, step_size_up=4000)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+
+    # TODO change criterion thing here!
     criterion = torch.nn.BCEWithLogitsLoss(reduction="mean")
 
     # Set up training
@@ -128,7 +138,7 @@ def main():
     for epoch in range(0, args.epochs):
 
         train_step(model, train_data, criterion, optimizer)
-        # writer.report_model_parameters() # FIXME - crashes for unkown reason...
+        # writer.report_model_parameters() # FIXME - crashes for unknown reason...
 
         train_loss, train_acc = test_step(model, train_data, writer, testing=False)
         test_loss, test_acc = test_step(model, val_data, writer, testing=True)
