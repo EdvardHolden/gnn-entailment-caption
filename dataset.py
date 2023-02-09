@@ -1,6 +1,8 @@
 from pathlib import Path
 import torch
-from torch.utils.data import DataLoader
+
+# from torch.utils.data import DataLoader
+from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data, InMemoryDataset, Batch, Dataset
 from tqdm import tqdm
 import os
@@ -9,6 +11,7 @@ from enum import Enum
 import networkx as nx
 from itertools import product
 import multiprocessing
+import pickle
 
 import config
 from graph_parser import graph
@@ -19,6 +22,15 @@ from read_problem import read_problem_deepmath, read_problem_tptp
 class BenchmarkType(Enum):
     DEEPMATH = "deepmath"
     TPTP = "tptp"
+
+    def __str__(self):
+        return self.value
+
+
+class LearningTask(Enum):
+
+    PREMISE = "premise"
+    SIMILARITY = "similarity"
 
     def __str__(self):
         return self.value
@@ -261,9 +273,67 @@ class TorchMemoryDataset(InMemoryDataset):
         torch.save((data, slices), out)
 
 
+class PairData(Data):
+    def __init__(
+        self,
+        edge_index_s: torch.Tensor,
+        x_s: torch.Tensor,
+        edge_index_t: torch.Tensor,
+        x_t: torch.Tensor,
+        y: float,
+    ):
+        super().__init__()
+        self.edge_index_s = edge_index_s
+        self.x_s = x_s
+        self.edge_index_t = edge_index_t
+        self.x_t = x_t
+        self.y = y
+
+    def __inc__(self, key, value, *args, **kwargs):
+        if key == "edge_index_s":
+            return self.x_s.size(0)
+        if key == "edge_index_t":
+            return self.x_t.size(0)
+        else:
+            return super().__inc__(key, value, *args, **kwargs)
+
+
+def get_pair_dataset(dataset, dataset_path) -> List[PairData]:
+    # Get files
+    with open(os.path.join(dataset_path, "target.pkl"), "rb") as f:
+        targets = pickle.load(f)
+
+    with open(os.path.join(dataset_path, "idx.pkl"), "rb") as f:
+        ids = pickle.load(f)
+
+    assert len(ids) == len(targets)
+
+    # Load problem pairs
+    pair_list = []
+    for target, pair in zip(targets, ids):
+        # Get left and right graph in the pair
+        data_s = dataset.get(pair[0])
+        data_t = dataset.get(pair[1])
+
+        # Construct pair data point
+        data = PairData(
+            edge_index_s=data_s.edge_index,
+            x_s=data_s.x,
+            edge_index_t=data_t.edge_index,
+            x_t=data_t.x,
+            y=target,
+        )
+
+        # Add to list
+        pair_list += [data]
+
+    return pair_list
+
+
 def get_data_loader(
     id_file,
     benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH,
+    task: LearningTask = LearningTask.PREMISE,
     in_memory: bool = True,
     batch_size: int = config.BATCH_SIZE,
     shuffle: bool = True,
@@ -276,7 +346,16 @@ def get_data_loader(
         dataset = TorchLoadDataset(id_file, benchmark_type, **kwargs)
     kwargs.pop("transform", None)
     kwargs.pop("remove_argument_node", None)
-    print("Dataset:", dataset)
+
+    # Create pair data dataset from loaded problems if set
+    if task == LearningTask.SIMILARITY:
+        dataset_path = os.path.join(config.dpath, "unsupervised_data/" + Path(id_file).stem)
+        dataset = get_pair_dataset(dataset, dataset_path)
+        follow_batch = ["x_s", "x_t"]  # Needed for correct sizes
+        print("Unsupervised dataset:", len(dataset))
+    else:
+        follow_batch = None
+        print("Dataset:", dataset)
 
     return DataLoader(
         dataset,
@@ -284,6 +363,7 @@ def get_data_loader(
         collate_fn=Batch.from_data_list,
         shuffle=shuffle,
         pin_memory=True,
+        follow_batch=follow_batch,
         num_workers=min(multiprocessing.cpu_count() - 1, 8),
         **kwargs,
     )
