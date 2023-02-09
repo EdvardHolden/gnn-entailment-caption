@@ -9,11 +9,11 @@ import torch_geometric as pyg
 import torch_geometric.nn as pyg_nn
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple
+from typing import Tuple, Callable
 
 import config
 from dataset import get_data_loader, BenchmarkType, LearningTask
-from model import GNNStack, load_model_params
+from model import GNNStackSiamese, GNNStack, load_model_params
 from stats_writer import Writer
 
 
@@ -65,6 +65,20 @@ def train_step(model: nn.Module, train_data: pyg.loader.DataLoader, criterion, o
         optimizer.zero_grad()  # Clear gradients.
 
 
+def get_score(task, out, y):
+
+    if task == LearningTask.PREMISE:
+        # Premise used accuracy
+        pred = torch.sigmoid(out).round().long()
+        score = y.eq(pred).sum().item()
+    elif task == LearningTask.SIMILARITY:
+        score = F.l1_loss(out, y, reduction="sum")
+    else:
+        raise ValueError()
+
+    return score
+
+
 def test_step(
     model: nn.Module,
     test_data: pyg.loader.DataLoader,
@@ -73,7 +87,6 @@ def test_step(
     task: LearningTask,
     testing: bool,
 ) -> Tuple[float, float]:
-
     model.eval()
 
     score = 0
@@ -85,14 +98,7 @@ def test_step(
         _, out = model(data)
 
         # Compute score
-        if task == LearningTask.PREMISE:
-            # Premise used accuracy
-            pred = torch.sigmoid(out).round().long()
-            score += data.y.eq(pred).sum().item()
-        elif task == LearningTask.SIMILARITY:
-            score = F.l1_loss(out, data.y, reduction="sum")
-        else:
-            raise ValueError()
+        score += get_score(task, out, data.y)
 
         # Compute loss
         loss = criterion(out, data.y, reduction="sum")
@@ -113,6 +119,32 @@ def test_step(
     return total_loss, score
 
 
+def get_criterion(learning_task: LearningTask) -> Callable:
+    # Select criterion loss based on learning task
+    if learning_task == LearningTask.PREMISE:
+        criterion = F.binary_cross_entropy_with_logits
+    elif learning_task == LearningTask.SIMILARITY:
+        criterion = F.mse_loss
+    else:
+        raise ValueError(f"Cannot select cooperation based on task {learning_task}")
+
+    return criterion
+
+
+def get_model(experiment_dir: str, learning_task: LearningTask) -> nn.Module:
+    model_params = load_model_params(experiment_dir)
+    model_params["task"] = learning_task  # Set task from input
+    if learning_task == LearningTask.PREMISE:
+        model = GNNStack(**model_params)
+    elif learning_task == LearningTask.SIMILARITY:
+        model = GNNStackSiamese(**model_params)
+    else:
+        raise ValueError()
+
+    model = model.to(config.device)
+    return model
+
+
 def main():
     # Get arguments
     parser = get_train_parser()
@@ -129,15 +161,12 @@ def main():
     if not os.path.exists(args.experiment_dir):
         os.makedirs(args.experiment_dir)
 
-    train_data = get_data_loader(args.train_id, args.benchmark_type, **dataset_params)
-    val_data = get_data_loader(args.val_id, args.benchmark_type, **dataset_params)
+    # Get datasets wrapper in a loader
+    train_data = get_data_loader(args.train_id, args.benchmark_type, task=learning_task, **dataset_params)
+    val_data = get_data_loader(args.val_id, args.benchmark_type, task=learning_task, **dataset_params)
 
     # Initialise model
-    model_params = load_model_params(args.experiment_dir)
-    model_params["task"] = learning_task  # Set task from input
-    model = GNNStack(**model_params)
-    model = model.to(config.device)
-
+    model = get_model(args.experiment_dir, learning_task)
     # Initialise writer
     writer = Writer(model)
 
@@ -145,14 +174,7 @@ def main():
     # optimizer = SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4, nesterov=True)
     # scheduler = CyclicLR(optimizer, 0.01, 0.1, mode="exp_range", gamma=0.99995, step_size_up=4000)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
-
-    # Select criterion loss based on learning task
-    if learning_task == LearningTask.PREMISE:
-        criterion = F.binary_cross_entropy_with_logits
-    elif learning_task == LearningTask.SIMILARITY:
-        criterion = F.mse_loss
-    else:
-        raise ValueError(f'Cannot select cooperation based on task {learning_task}')
+    criterion = get_criterion(learning_task)
 
     # Set up training
     if args.es_patience is not None:
@@ -167,11 +189,13 @@ def main():
         train_step(model, train_data, criterion, optimizer)
         # writer.report_model_parameters() # FIXME - crashes for unknown reason...
 
-        train_loss, train_acc = test_step(model, train_data, writer, criterion, learning_task, testing=False)
-        test_loss, test_acc = test_step(model, val_data, writer, criterion, learning_task, testing=True)
+        train_loss, train_score = test_step(
+            model, train_data, writer, criterion, learning_task, testing=False
+        )
+        test_loss, test_score = test_step(model, val_data, writer, criterion, learning_task, testing=True)
         print(
             f"Epoch: {epoch:03d}, Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}, "
-            f"Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}"
+            f"Train Score: {train_score:.4f}, Test Score: {test_score:.4f}"
         )
 
         # Check for early stopping
