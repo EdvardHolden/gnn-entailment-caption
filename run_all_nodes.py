@@ -12,6 +12,8 @@ PYTHON_PATH = "/shareddata/homes/holden/.pyenv/shims/python3"
 
 NOHUP_POST = " >> nohup_{0}.out 2>&1  & "  # dev/null makes sure we do not stick around to wait for the process to terminate
 
+BAD_NODES = [2, 8, 13, 14, 20]
+
 
 def main():
 
@@ -40,6 +42,10 @@ def main():
     print(f'Running cmd: "{cmd}"')
 
     for i in tqdm(range(args.node_lbound, args.node_ubound)):
+
+        if i in BAD_NODES:
+            continue
+
         node = f"cc{i:02}"
 
         try:
