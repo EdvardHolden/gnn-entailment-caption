@@ -212,8 +212,12 @@ class TorchLoadDataset(Dataset):
                 pre_filter=self.pre_filter,
                 pre_transform=self.pre_transform,
             )
+            if self.remove_argument_node:
+                context = "_remove_arg_node"
+            else:
+                context = ""
 
-            out_file = Path(self.processed_dir) / f"{self.benchmark_type}_{problem}.pt"
+            out_file = Path(self.processed_dir) / f"{self.benchmark_type}{context}_{problem}.pt"
             torch.save(data, out_file)
 
 
@@ -250,7 +254,11 @@ class TorchMemoryDataset(InMemoryDataset):
     @property
     def processed_file_names(self) -> List[str]:
         # return [Path(prob).stem + ".pt" for prob in self.problems]
-        return [f"{self.benchmark_type}_{self.id_partition}.pt"]
+        if self.remove_argument_node:
+            context = "_remove_arg_node"
+        else:
+            context = ""
+        return [f"{self.benchmark_type}{context}_{self.id_partition}.pt"]
 
     def len(self) -> int:
         return len(self.raw_file_names)
