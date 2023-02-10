@@ -8,6 +8,7 @@ import json
 from tqdm import tqdm
 from subprocess import check_call
 from argparse import Namespace
+import time
 from typing import Optional
 
 import config
@@ -133,6 +134,7 @@ def main():
 
         # Launch job
         launch_training_job(job_dir, args)
+        time.sleep(2)  # Give the machine two seconds to recover
 
     # Report the number of skipped runs if any
     if no_skipped_runs > 0:

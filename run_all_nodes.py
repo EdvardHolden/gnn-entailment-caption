@@ -1,10 +1,15 @@
 import subprocess
 import argparse
 import time
+from tqdm import tqdm
 
 # Useful cmd# killall -u holden
 
-NOHUP_POST = " 2>&1 >> nohup_{0}.out & "
+# TODO if running python - might have to source ./bashrc first due to pyenv not loading on remote like that
+# TODO cannot figure out pythoin issue. bashrc is loading and everything .. Just doing HACK
+PYTHON_PATH = "/shareddata/homes/holden/.pyenv/shims/python3"
+
+NOHUP_POST = " >> nohup_{0}.out 2>&1  & "  # dev/null makes sure we do not stick around to wait for the process to terminate
 
 
 def main():
@@ -24,12 +29,16 @@ def main():
 
     cmd = " ".join(args.cmd)
     if args.nohup_post:
-        if "nohup" not in cmd:
-            raise ValueError("Forgot to call nohup at front of cmd")
+        # if "nohup" not in cmd:
+        #    raise ValueError("Forgot to call nohup at front of cmd")
         cmd += NOHUP_POST
+
+    if "python3" in PYTHON_PATH:
+        cmd = cmd.replace("python3", PYTHON_PATH)
+
     print(f'Running cmd: "{cmd}"')
 
-    for i in range(args.node_lbound, args.node_ubound):
+    for i in tqdm(range(args.node_lbound, args.node_ubound)):
         node = f"cc{i:02}"
 
         try:
@@ -50,7 +59,7 @@ def main():
             print(f"Timed out at node: {node}")
 
         if errs != b"":
-            print(f"Error on node {node} msg:", errs)
+            print(f"Error on node {node} msg:", errs.decode("utf-8"))
         time.sleep(args.delay)
         print(node, outs)
 
