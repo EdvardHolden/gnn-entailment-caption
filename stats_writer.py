@@ -58,7 +58,7 @@ class Writer:
         self._writer_add_scalar(f"loss/{tag}", loss)
 
     def report_score(self, tag: str, score):
-        self._writer_add_scalar(f"loss/{tag}", score)
+        self._writer_add_scalar(f"score/{tag}", score)
 
     def report_model_parameters(self):
         for name, parameter in self.model.named_parameters():

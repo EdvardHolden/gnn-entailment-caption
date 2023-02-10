@@ -22,6 +22,7 @@ def get_train_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--train_id", default=config.TRAIN_ID, help="ID file used for training")
     parser.add_argument("--val_id", default=config.VAL_ID, help="ID file used for validation")
+    parser.add_argument("--test_id", default=config.TEST_ID, help="ID file used for testing")
     parser.add_argument(
         "--benchmark_type",
         default=BenchmarkType.DEEPMATH,
@@ -36,6 +37,7 @@ def get_train_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--es_patience", default=config.ES_PATIENCE, type=int, help="Number of EarlyStopping epochs"
     )
+    parser.add_argument("--skip_testing", action="store_true", help="Skips model evaluation on the testing set")
 
     parser.add_argument(
         "--learning_task",
@@ -112,7 +114,7 @@ def test_step(
 
     if tag is not None:
         writer.report_score(tag, score)
-        writer.report_score(tag, total_loss)
+        writer.report_loss(tag, total_loss)
 
     return total_loss, score
 
@@ -189,18 +191,18 @@ def main():
         # writer.report_model_parameters() # FIXME - crashes for unknown reason...
 
         train_loss, train_score = test_step(model, train_data, writer, criterion, learning_task, tag="train")
-        test_loss, test_score = test_step(model, val_data, writer, criterion, learning_task, tag="val")
+        val_loss, val_score = test_step(model, val_data, writer, criterion, learning_task, tag="val")
         print(
-            f"Epoch: {epoch:03d}, Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}, "
-            f"Train Score: {train_score:.4f}, Test Score: {test_score:.4f}"
+            f"Epoch: {epoch:03d}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, "
+            f"Train Score: {train_score:.4f}, Val Score: {val_score:.4f}"
         )
 
         # Check for early stopping
         # TODO make function
         if args.es_patience is not None:
             es_wait += 1
-            if test_loss < es_best_loss:
-                es_best_loss = test_loss
+            if val_loss < es_best_loss:
+                es_best_loss = val_loss
                 es_wait = 0
                 # Always save the best model
                 torch.save(model.state_dict(), os.path.join(args.experiment_dir, "model_gnn.pt"))
@@ -213,6 +215,12 @@ def main():
 
         # Increment epoch for next iteration
         writer.on_step()
+
+    # Check on test set if set
+    if not args.skip_testing:
+        test_data = get_data_loader(args.test_id, args.benchmark_type, task=learning_task, **dataset_params)
+        test_loss, test_score = test_step(model, test_data, writer, criterion, learning_task, tag="test")
+        print(f"# Test Loss: {test_loss:.4f}, Test Score: {test_score:.4f}")
 
     # TODO check on test data?
     print(writer.get_scores())

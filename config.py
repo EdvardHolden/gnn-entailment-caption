@@ -20,6 +20,7 @@ ES_PATIENCE = 5
 
 TRAIN_ID = "id_files/train.txt"
 VAL_ID = "id_files/validation.txt"
+TEST_ID = "id_files/test.txt"
 
 PROBLEM_DIR = str((Path(__file__).parent / "nndata").absolute())
 
