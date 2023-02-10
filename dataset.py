@@ -12,6 +12,7 @@ import networkx as nx
 from itertools import product
 import multiprocessing
 import pickle
+import numpy as np
 
 import config
 from graph_parser import graph
@@ -148,7 +149,7 @@ def construct_graph(conjecture: List[str], premises: List[str], remove_argument_
         )
 
     x = torch.tensor(nodes)
-    edge_index = torch.tensor([sources, targets])
+    edge_index = torch.tensor(np.array([sources, targets]))
     premise_index = torch.tensor(premise_indices)
     conjecture_index = torch.tensor(conjecture_indices)
 
@@ -342,7 +343,7 @@ def get_data_loader(
     id_file,
     benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH,
     task: LearningTask = LearningTask.PREMISE,
-    in_memory: bool = True,
+    in_memory: bool = False,
     batch_size: int = config.BATCH_SIZE,
     shuffle: bool = True,
     **kwargs,
