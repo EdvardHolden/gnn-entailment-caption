@@ -13,6 +13,7 @@ from itertools import product
 import multiprocessing
 import pickle
 import numpy as np
+from sklearn.preprocessing import MinMaxScaler
 
 import config
 from graph_parser import graph
@@ -307,15 +308,27 @@ class PairData(Data):
             return super().__inc__(key, value, *args, **kwargs)
 
 
-def get_pair_dataset(dataset, dataset_path) -> List[PairData]:
-    # Get files
-    with open(os.path.join(dataset_path, "target.pkl"), "rb") as f:
-        targets = pickle.load(f)
+target_min_max_scaler = None  # TODO HACK
 
+
+def get_pair_dataset(dataset, dataset_path) -> List[PairData]:
+
+    # Get files
     with open(os.path.join(dataset_path, "idx.pkl"), "rb") as f:
         ids = pickle.load(f)
 
+    with open(os.path.join(dataset_path, "target.pkl"), "rb") as f:
+        targets = pickle.load(f)
+        targets = np.array(targets).reshape(-1, 1)
     assert len(ids) == len(targets)
+
+    # Process targets
+    targets = np.sqrt(targets)
+    global target_min_max_scaler  #  FIXME quite bad
+    if target_min_max_scaler is None:
+        target_min_max_scaler = MinMaxScaler().fit(targets)
+    targets = target_min_max_scaler.transform(targets)
+    targets = targets.reshape(-1)  # Back in expected format
 
     # Load problem pairs
     pair_list = []
