@@ -24,9 +24,9 @@ def get_train_parser() -> argparse.ArgumentParser:
     parser.add_argument("--val_id", default=config.VAL_ID, help="ID file used for validation")
     parser.add_argument(
         "--benchmark_type",
-        default="deepmath",
-        choices=BenchmarkType.list(),
-        type=BenchmarkType,
+        default=BenchmarkType.DEEPMATH,
+        choices=list(BenchmarkType),
+        type=lambda x: BenchmarkType(x),
         help="Benchmark type of the problems.",
     )
     parser.add_argument(
@@ -39,8 +39,9 @@ def get_train_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--learning_task",
-        default="premise",
-        choices=LearningTask.list(),
+        default=LearningTask.PREMISE,
+        choices=list(LearningTask),
+        type=lambda x: LearningTask(x),
         help="Learning task for training the GCN model",
     )
 
@@ -149,7 +150,7 @@ def main():
     # Get arguments
     parser = get_train_parser()
     args = parser.parse_args()
-    learning_task = LearningTask(args.learning_task)
+    learning_task = args.learning_task
 
     dataset_params = {}
     if args.graph_bidirectional:
