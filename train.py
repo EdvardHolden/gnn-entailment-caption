@@ -59,15 +59,18 @@ def get_train_parser() -> argparse.ArgumentParser:
 
 def train_step(model: nn.Module, train_data: pyg.loader.DataLoader, criterion, optimizer) -> None:
     model.train()
+    optimizer.zero_grad(set_to_none=True)  # Reset the gradients to None
 
-    for data in train_data:  # Iterate in batches over the training dataset.
-        data = data.to(config.device)
-        _, out = model(data)  # Perform a single forward pass.
+    for batch in train_data:  # Iterate in batches over the training dataset.
+        batch = batch.to(config.device)
+        _, out = model(batch)  # Perform a single forward pass.
 
-        loss = criterion(out, data.y, reduction="mean")  # Compute the loss.
+        loss = criterion(out, batch.y, reduction="mean")  # Compute the loss.
         loss.backward()  # Derive gradients.
         optimizer.step()  # Update parameters based on gradients.
-        optimizer.zero_grad()  # Clear gradients.
+        # optimizer.zero_grad()  # Clear gradients.
+        optimizer.zero_grad(set_to_none=True)  # Reset the gradients to None
+        del batch
 
 
 def get_score(task, out, y):
@@ -98,17 +101,18 @@ def test_step(
     total_samples = 0
     total_loss = 0.0
 
-    for data in test_data:  # Iterate in batches over the training/test dataset.
-        data = data.to(config.device)
-        _, out = model(data)
+    for batch in test_data:  # Iterate in batches over the training/test dataset.
+        batch = batch.to(config.device)
+        _, out = model(batch)
 
         # Compute score
-        score += get_score(task, out, data.y)
+        score += get_score(task, out, batch.y)
 
         # Compute loss
-        loss = criterion(out, data.y, reduction="sum")
+        loss = criterion(out, batch.y, reduction="sum")
         total_loss += loss
         total_samples += len(out)
+        del batch
 
     score = score / total_samples  # Derive average score
     total_loss /= total_samples
