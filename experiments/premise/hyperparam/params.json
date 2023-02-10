@@ -1,8 +1,9 @@
 {
-	"hidden_dim": [12, 16],
-	"num_convolutional_layers": [1],
-	"no_dense_layers": [1],
+	"hidden_dim": [32, 64, 128],
+	"num_convolutional_layers": [6],
+	"no_dense_layers": [1, 2, 3],
 	"direction": ["single"],
-	"dropout_rate": [0.2],
-	"task": ["premise"]
+	"dropout_rate": [0.0, 0.1, 0.2],
+    "normalisation": ["batch", "layer"],
+    "skip_connection": [true, false]
 }
