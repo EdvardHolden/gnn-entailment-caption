@@ -13,8 +13,6 @@ PYTHON_PATH = "/shareddata/homes/holden/.pyenv/shims/python3"
 NOHUP_POST = " >> nohup_{0}.out 2>&1  & "  # dev/null makes sure we do not stick around to wait for the process to terminate
 
 
-
-
 def main():
 
     parser = argparse.ArgumentParser()
@@ -47,10 +45,12 @@ def main():
         try:
 
             if args.nohup_post:
-                cmd = cmd.format(i)
+                cmd_run = cmd.format(i)
+            else:
+                cmd_run = cmd
 
             proc = subprocess.Popen(
-                f"ssh {node} ' {cmd} '",
+                f"ssh {node} ' {cmd_run} '",
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
