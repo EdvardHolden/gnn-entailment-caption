@@ -187,19 +187,24 @@ class TorchLoadDataset(Dataset):
 
     @property
     def processed_file_names(self) -> List[str]:
-        return [f"{self.benchmark_type}_{p}.pt" for p in self.problem_ids]
+        return [self._get_file_name(prob) for prob in self.problem_ids]
 
     def len(self) -> int:
         return len(self.raw_file_names)
 
     def get(self, idx: int) -> Data:
         data = torch.load(
-            os.path.join(self.processed_dir, f"{self.benchmark_type}_{idx}.pt")
+            Path(self.processed_dir) / self._get_file_name(idx)
         )  # The ids are now the processed names
         return data
 
     def indices(self) -> Sequence:
         return self.problem_ids
+
+    def _get_file_name(self, prob_id) -> str:
+        context = get_context(self)
+        out_file = f"{self.benchmark_type}{context}_{prob_id}.pt"
+        return out_file
 
     def process(self):
         for problem in tqdm(self.raw_file_names):
@@ -212,13 +217,18 @@ class TorchLoadDataset(Dataset):
                 pre_filter=self.pre_filter,
                 pre_transform=self.pre_transform,
             )
-            if self.remove_argument_node:
-                context = "_remove_arg_node"
-            else:
-                context = ""
 
-            out_file = Path(self.processed_dir) / f"{self.benchmark_type}{context}_{problem}.pt"
+            out_file = Path(self.processed_dir) / self._get_file_name(problem)
             torch.save(data, out_file)
+
+
+def get_context(self_object) -> str:
+
+    if self_object.remove_argument_node:
+        context = "_remove_arg_node"
+    else:
+        context = ""
+    return context
 
 
 class TorchMemoryDataset(InMemoryDataset):
@@ -254,20 +264,16 @@ class TorchMemoryDataset(InMemoryDataset):
     @property
     def processed_file_names(self) -> List[str]:
         # return [Path(prob).stem + ".pt" for prob in self.problems]
-        if self.remove_argument_node:
-            context = "_remove_arg_node"
-        else:
-            context = ""
-        return [f"{self.benchmark_type}{context}_{self.id_partition}.pt"]
+        context = get_context(self)
+        return [self._get_file_name()]
+
+    def _get_file_name(self) -> str:
+        context = get_context(self)
+        out_file = f"{self.benchmark_type}{context}_{self.id_partition}.pt"
+        return out_file
 
     def len(self) -> int:
         return len(self.raw_file_names)
-
-    """
-    def get(self, idx: int) -> Data:
-        data = torch.load(os.path.join(self.processed_dir, str(idx)))  # The ids are now the processed names
-        return data
-        """
 
     def process(self):
         data_list = []
