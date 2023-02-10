@@ -217,6 +217,8 @@ def main():
         # Increment epoch for next iteration
         writer.on_step()
 
+    # TODO check on test data?
+
     # Save the training history
     writer.save_scores(args.experiment_dir)
 
