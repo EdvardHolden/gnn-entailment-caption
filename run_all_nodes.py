@@ -62,7 +62,7 @@ def main():
             print(f"Timed out at node: {node}")
 
         if errs != b"":
-            print(f"Error on node {node} msg:", errs.decode("utf-8"))
+            print(f"Error on node {node} msg:", errs.decode("utf-8"), outs.decode("utf-8"))
         time.sleep(args.delay)
         print(node, outs)
 
