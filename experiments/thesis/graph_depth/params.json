@@ -1,0 +1,9 @@
+{
+	"hidden_dim": [64],
+	"num_convolutional_layers": [1, 2, 3, 4, 5, 6],
+	"no_dense_layers": [2],
+	"direction": ["single"],
+	"dropout_rate": [ 0.1],
+    "normalisation": ["layer"],
+    "skip_connection": [true]
+}
