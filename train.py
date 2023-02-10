@@ -48,6 +48,9 @@ def get_train_parser() -> argparse.ArgumentParser:
         type=lambda x: LearningTask(x),
         help="Learning task for training the GCN model",
     )
+    parser.add_argument(
+        "--in_memory", action="store_true", help="Set dataset to in memory (may not always work)"
+    )
 
     parser.add_argument("--graph_bidirectional", action="store_true", help="Makes the graphs bidirectional")
     parser.add_argument(
@@ -168,8 +171,12 @@ def main():
         os.makedirs(args.experiment_dir)
 
     # Get datasets wrapper in a loader
-    train_data = get_data_loader(args.train_id, args.benchmark_type, task=learning_task, **dataset_params)
-    val_data = get_data_loader(args.val_id, args.benchmark_type, task=learning_task, **dataset_params)
+    train_data = get_data_loader(
+        args.train_id, args.benchmark_type, task=learning_task, in_memory=args.in_memory, **dataset_params
+    )
+    val_data = get_data_loader(
+        args.val_id, args.benchmark_type, task=learning_task, in_memory=args.in_memory, **dataset_params
+    )
 
     # Initialise model
     model = get_model(args.experiment_dir, learning_task)
@@ -227,7 +234,9 @@ def main():
         # Save some memory
         del train_data
         del val_data
-        test_data = get_data_loader(args.test_id, args.benchmark_type, task=learning_task, **dataset_params)
+        test_data = get_data_loader(
+            args.test_id, args.benchmark_type, task=learning_task, in_memory=args.in_memory, **dataset_params
+        )
         test_loss, test_score = test_step(model, test_data, writer, criterion, learning_task, tag="test")
         print(f"# Test Loss: {test_loss:.4f}, Test Score: {test_score:.4f}")
 

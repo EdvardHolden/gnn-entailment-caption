@@ -334,8 +334,12 @@ def get_pair_dataset(dataset, dataset_path) -> List[PairData]:
     pair_list = []
     for target, pair in zip(targets, ids):
         # Get left and right graph in the pair
-        data_s = dataset.get(pair[0])
-        data_t = dataset.get(pair[1])
+        if isinstance(dataset, TorchLoadDataset):
+            data_s = dataset.get(dataset.problem_ids[int(pair[0])])
+            data_t = dataset.get(dataset.problem_ids[int(pair[1])])
+        else:
+            data_s = dataset.get(pair[0])
+            data_t = dataset.get(pair[1])
 
         # Construct pair data point
         data = PairData(
