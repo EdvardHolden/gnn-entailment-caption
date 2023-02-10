@@ -83,7 +83,7 @@ def get_score(task, out, y):
         pred = torch.sigmoid(out).round().long()
         score = y.eq(pred).sum().item()
     elif task == LearningTask.SIMILARITY:
-        score = F.l1_loss(out, y, reduction="sum")
+        score = F.l1_loss(out, y, reduction="sum").item()
     else:
         raise ValueError()
 
