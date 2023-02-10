@@ -37,7 +37,9 @@ def get_train_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--es_patience", default=config.ES_PATIENCE, type=int, help="Number of EarlyStopping epochs"
     )
-    parser.add_argument("--skip_testing", action="store_true", help="Skips model evaluation on the testing set")
+    parser.add_argument(
+        "--skip_testing", action="store_true", help="Skips model evaluation on the testing set"
+    )
 
     parser.add_argument(
         "--learning_task",
@@ -218,6 +220,9 @@ def main():
 
     # Check on test set if set
     if not args.skip_testing:
+        # Save some memory
+        del train_data
+        del val_data
         test_data = get_data_loader(args.test_id, args.benchmark_type, task=learning_task, **dataset_params)
         test_loss, test_score = test_step(model, test_data, writer, criterion, learning_task, tag="test")
         print(f"# Test Loss: {test_loss:.4f}, Test Score: {test_score:.4f}")
