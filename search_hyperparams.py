@@ -76,7 +76,7 @@ def launch_training_job(job_dir: str, args: Namespace) -> None:
 
     # Add all other remaining training parameters
     for param in default_parameters:
-        if param in ["graph_bidirectional", "graph_remove_argument_node"]:
+        if param in ["graph_bidirectional", "graph_remove_argument_node", "in_memory"]:
             if args.__dict__[param]:  # if set to true
                 cmd += f" --{param} "
             # Cannot handle None values so only set if not None

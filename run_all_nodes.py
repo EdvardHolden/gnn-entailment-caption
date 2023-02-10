@@ -12,7 +12,7 @@ PYTHON_PATH = "/shareddata/homes/holden/.pyenv/shims/python3"
 
 NOHUP_POST = " >> nohup_{0}.out 2>&1  & "  # dev/null makes sure we do not stick around to wait for the process to terminate
 
-BAD_NODES = [2, 8, 13, 14, 20]
+BAD_NODES = [2, 8, 13, 14, 16, 20]
 
 
 def main():
@@ -70,7 +70,6 @@ def main():
         if errs != b"":
             print(f"Error on node {node} msg:", errs.decode("utf-8"), outs.decode("utf-8"))
         time.sleep(args.delay)
-        print(node, outs)
 
     print("# Finished")
 

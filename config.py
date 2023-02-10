@@ -4,7 +4,7 @@ from pathlib import Path
 
 # Increase u limit
 rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
-resource.setrlimit(resource.RLIMIT_NOFILE, (2048, rlimit[1]))
+resource.setrlimit(resource.RLIMIT_NOFILE, (2048 * 2, rlimit[1]))
 
 PYTHON = sys.executable
 
@@ -13,7 +13,8 @@ PYTHON = sys.executable
 device = "cpu"
 
 BENCHMARK_PATHS = {"deepmath": Path(__file__).parent / "nndata"}
-BATCH_SIZE = 64
+# BATCH_SIZE = 64
+BATCH_SIZE = 32
 
 EPOCHS = 80
 ES_PATIENCE = 5

@@ -3,6 +3,8 @@ deepmath/nndata/
 deepmath/Cargo.lock
 propositional/data/
 runs/
+*.out
+experiments/*
 
 __pycache__/
 *.pt
