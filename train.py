@@ -9,7 +9,7 @@ import torch_geometric as pyg
 import torch_geometric.nn as pyg_nn
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple, Callable
+from typing import Tuple, Callable, Optional
 
 import config
 from dataset import get_data_loader, BenchmarkType, LearningTask
@@ -84,9 +84,9 @@ def test_step(
     model: nn.Module,
     test_data: pyg.loader.DataLoader,
     writer: Writer,
-    criterion,
+    criterion: Callable,
     task: LearningTask,
-    testing: bool,
+    tag: Optional[str],
 ) -> Tuple[float, float]:
     model.eval()
 
@@ -110,12 +110,9 @@ def test_step(
     total_loss /= total_samples
     total_loss = total_loss.item()
 
-    if testing:
-        writer.report_val_score(score)
-        writer.report_val_loss(total_loss)
-    else:
-        writer.report_train_score(score)
-        writer.report_train_loss(total_loss)
+    if tag is not None:
+        writer.report_score(tag, score)
+        writer.report_score(tag, total_loss)
 
     return total_loss, score
 
@@ -178,6 +175,7 @@ def main():
     criterion = get_criterion(learning_task)
 
     # Set up training
+    # TODO make function
     if args.es_patience is not None:
         print(f"Early Stopping is set to: {args.es_patience}")
         es_wait = 0
@@ -190,16 +188,15 @@ def main():
         train_step(model, train_data, criterion, optimizer)
         # writer.report_model_parameters() # FIXME - crashes for unknown reason...
 
-        train_loss, train_score = test_step(
-            model, train_data, writer, criterion, learning_task, testing=False
-        )
-        test_loss, test_score = test_step(model, val_data, writer, criterion, learning_task, testing=True)
+        train_loss, train_score = test_step(model, train_data, writer, criterion, learning_task, tag="train")
+        test_loss, test_score = test_step(model, val_data, writer, criterion, learning_task, tag="val")
         print(
             f"Epoch: {epoch:03d}, Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}, "
             f"Train Score: {train_score:.4f}, Test Score: {test_score:.4f}"
         )
 
         # Check for early stopping
+        # TODO make function
         if args.es_patience is not None:
             es_wait += 1
             if test_loss < es_best_loss:
@@ -218,6 +215,7 @@ def main():
         writer.on_step()
 
     # TODO check on test data?
+    print(writer.get_scores())
 
     # Save the training history
     writer.save_scores(args.experiment_dir)

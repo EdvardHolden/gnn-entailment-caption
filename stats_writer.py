@@ -42,11 +42,23 @@ class Writer:
     def report_train_score(self, score):
         self._writer_add_scalar("score/train", score)
 
+    def report_test_score(self, score):
+        self._writer_add_scalar("score/test", score)
+
     def report_train_loss(self, loss):
         self._writer_add_scalar("loss/train", loss)
 
     def report_val_loss(self, loss):
         self._writer_add_scalar("loss/val", loss)
+
+    def report_test_loss(self, loss):
+        self._writer_add_scalar("loss/test", loss)
+
+    def report_loss(self, tag: str, loss):
+        self._writer_add_scalar(f"loss/{tag}", loss)
+
+    def report_score(self, tag: str, score):
+        self._writer_add_scalar(f"loss/{tag}", score)
 
     def report_model_parameters(self):
         for name, parameter in self.model.named_parameters():
