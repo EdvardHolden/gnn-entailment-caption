@@ -12,6 +12,7 @@ from tabulate import tabulate
 
 parser = argparse.ArgumentParser()
 parser.add_argument("result_dir", default="experiments", help="Directory containing results of experiments")
+parser.add_argument("--restrict_metric", default=None, nargs="+", help="Restrict table to current metric")
 
 
 def aggregate_metrics(parent_dir, metrics):
@@ -57,6 +58,10 @@ def main():
     # Aggregate metrics from args.parent_dir directory
     metrics = dict()
     aggregate_metrics(args.result_dir, metrics)
+
+    if args.restrict_metric is not None:
+        for exp in metrics:
+            metrics[exp] = {k: v for k, v in metrics[exp].items() if k in args.restrict_metric}
 
     # Create score table
     table = metrics_to_table(metrics)
