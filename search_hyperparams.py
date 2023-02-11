@@ -72,15 +72,28 @@ def launch_training_job(job_dir: str, args: Namespace) -> None:
     cmd = f"{config.PYTHON} train.py "
 
     # Get the default parameters from the training script
-    default_parameters = sorted(get_train_parser().parse_args([]).__dict__.keys())
+    dummy_parser = get_train_parser()
+    default_parameters = dummy_parser.parse_args([]).__dict__.keys()
 
     # Add all other remaining training parameters
-    for param in default_parameters:
-        if param in ["graph_bidirectional", "graph_remove_argument_node", "in_memory"]:
-            if args.__dict__[param]:  # if set to true
+    for i, param in enumerate(default_parameters, start=1):
+
+        if isinstance(
+            dummy_parser.__dict__["_actions"][i], dummy_parser.__dict__["_registries"]["action"]["store_true"]
+        ):
+            # Parse ActionStoreTrue option
+            if args.__dict__[param]:  # if set to true - add flag
                 cmd += f" --{param} "
-            # Cannot handle None values so only set if not None
-        elif param == "es_patience":
+        elif isinstance(
+            dummy_parser.__dict__["_actions"][i],
+            dummy_parser.__dict__["_registries"]["action"]["store_false"],
+        ):
+            # Parse ActionStoreFalse option
+            if not args.__dict__[param]:  # if set to false - add flag
+                cmd += f" --{param} "
+        elif (
+            param == "es_patience"
+        ):  # Cannot handle None values so only set if not None # FIXMe could be better
             if args.__dict__[param] is not None:
                 cmd += f" --{param} {args.__dict__[param]} "
         elif param == "experiment_dir":
