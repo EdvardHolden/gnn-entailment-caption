@@ -5,6 +5,7 @@ from tqdm import tqdm
 
 # Useful cmd# killall -u holden
 # python3 run_all_nodes.py  --delay 3 --node_lbound 3 --nohup_post 'cd gnn-entailment-caption/ ;  python3 -u search_hyperparams.py --experiment_dir experiments/premise/hyperparam/ --parameter_space experiments/premise/hyperparam/params.json '
+# python3 run_all_nodes.py  --delay 3 --node_lbound 2 --nohup_post 'cd gnn-entailment-caption/ ;  python3 -u search_hyperparams.py --train_id id_files/train_half.txt --experiment_dir experiments/premise/hyperparam/ --parameter_space experiments/premise/hyperparam/params.json '
 
 # TODO if running python - might have to source ./bashrc first due to pyenv not loading on remote like that
 # TODO cannot figure out pythoin issue. bashrc is loading and everything .. Just doing HACK
@@ -12,7 +13,7 @@ PYTHON_PATH = "/shareddata/homes/holden/.pyenv/shims/python3"
 
 NOHUP_POST = " >> nohup_{0}.out 2>&1  & "  # dev/null makes sure we do not stick around to wait for the process to terminate
 
-BAD_NODES = [2, 8, 13, 14, 16, 20]
+BAD_NODES = [2, 8, 13, 14, 15, 16, 20]
 
 
 def main():
