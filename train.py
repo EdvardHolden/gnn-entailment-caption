@@ -6,14 +6,14 @@ import numpy as np
 import os
 from torch_geometric.transforms import ToUndirected
 import torch_geometric as pyg
-import torch_geometric.nn as pyg_nn
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Tuple, Callable, Optional
 
 import config
 from dataset import get_data_loader, BenchmarkType, LearningTask
-from model import GNNStackSiamese, GNNStack, load_model_params
+from model import get_model
+from transfer_learning import get_transfer_model
 from stats_writer import Writer
 
 
@@ -32,6 +32,12 @@ def get_train_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--experiment_dir", default="experiments/premise/test", help="Directory for saving model and stats"
+    )
+    parser.add_argument(
+        "--transfer_model_dir",
+        default=None,
+        type=str,
+        help="The model directory of the pre-trained model (uses transfer learning)",
     )
     parser.add_argument("--epochs", default=config.EPOCHS, type=int, help="Number of training epochs.")
     parser.add_argument(
@@ -140,20 +146,6 @@ def get_criterion(learning_task: LearningTask) -> Callable:
     return criterion
 
 
-def get_model(experiment_dir: str, learning_task: LearningTask) -> nn.Module:
-    model_params = load_model_params(experiment_dir)
-    model_params["task"] = learning_task  # Set task from input
-    if learning_task == LearningTask.PREMISE:
-        model = GNNStack(**model_params)
-    elif learning_task == LearningTask.SIMILARITY:
-        model = GNNStackSiamese(**model_params)
-    else:
-        raise ValueError()
-
-    model = model.to(config.device)
-    return model
-
-
 def main():
     # Get arguments
     parser = get_train_parser()
@@ -179,7 +171,12 @@ def main():
     )
 
     # Initialise model
-    model = get_model(args.experiment_dir, learning_task)
+    if args.transfer_model_dir is not None:
+        # Get pre-trained model from the provided path
+        model = get_transfer_model(args.transfer_model_dir, learning_task)
+    else:
+        model = get_model(args.experiment_dir, learning_task)
+
     # Initialise writer
     writer = Writer(model)
 

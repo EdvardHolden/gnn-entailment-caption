@@ -1,6 +1,7 @@
 import os
 import json
 import torch
+from torch import nn as nn
 from torch.nn import Embedding
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv, Linear, MessagePassing, global_mean_pool
@@ -311,3 +312,24 @@ if __name__ == "__main__":
         # task="premise",
     )
     print(test_model)
+
+
+def load_model(model_dir, learning_task):
+    model = get_model(model_dir, learning_task)
+    model.load_state_dict(torch.load(os.path.join(model_dir, "model_gnn.pt")))
+
+    return model
+
+
+def get_model(experiment_dir: str, learning_task: LearningTask) -> nn.Module:
+    model_params = load_model_params(experiment_dir)
+    model_params["task"] = learning_task  # Set task from input
+    if learning_task == LearningTask.PREMISE:
+        model = GNNStack(**model_params)
+    elif learning_task == LearningTask.SIMILARITY:
+        model = GNNStackSiamese(**model_params)
+    else:
+        raise ValueError()
+
+    model = model.to(config.device)
+    return model
