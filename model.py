@@ -226,6 +226,7 @@ class GNNStack(torch.nn.Module):
         no_dense_layers: int,
         direction: str,
         dropout_rate: float = 0.0,
+        no_embeddings: int = len(config.NODE_TYPE),
         task: LearningTask = LearningTask.PREMISE,
         normalisation="layer",
         skip_connection: bool = True,
@@ -238,7 +239,7 @@ class GNNStack(torch.nn.Module):
         self.hidden_dim = hidden_dim
 
         # Add embedding layer
-        self.node_embedding = Embedding(len(config.NODE_TYPE), hidden_dim)
+        self.node_embedding = Embedding(no_embeddings, hidden_dim)
 
         # Add GCN layer
         if direction == "single":
