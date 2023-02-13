@@ -125,6 +125,7 @@ class GCNDirectional(torch.nn.Module):
         self.convs = build_conv_model(num_convolutional_layers, hidden_dim, self.flow)
 
         # Add normalisation layers used in between graph convolutions
+        self.normalisation = normalisation
         if normalisation is None:
             self.lns = None
         else:
@@ -181,6 +182,7 @@ class GCNBiDirectional(torch.nn.Module):
         else:
             self.normaliser = GCN_NORMALISATION[normalisation]
             self.lns = build_normalisation_layers(self.normaliser, hidden_dim, num_convolutional_layers - 1)
+        self.normalisation = normalisation
 
         # Add Linear layers
         self.linear = build_merge_linear_layers(num_convolutional_layers, hidden_dim)
@@ -248,6 +250,7 @@ class GNNStack(torch.nn.Module):
             gcn_base = GCNBiDirectional
         else:
             raise ValueError(f"Unknown gcn direction {direction}")
+        self.direction = direction
 
         self.gcn = gcn_base(
             hidden_dim=self.hidden_dim,
@@ -273,6 +276,14 @@ class GNNStack(torch.nn.Module):
         x = self.post_mp(x[premise_index])
 
         return emb, x
+
+    def __str__(self) -> str:
+        # tODO should really be nested???
+        return (
+            f"GNNStack:hidden_dim_{self.hidden_dim}_num_convolution_layers_{self.gcn.num_convolutional_layers}"
+            f"_no_dense_layers{self.post_mp.no_dense_layers}_direction_{self.direction}_drop_out_rate_{self.dropout_rate}"
+            f"_normalisation_{self.gcn.normalisation}_skip_connection_{self.gcn.skip_connection}"
+        )
 
 
 class GNNStackSiamese(GNNStack):
@@ -302,19 +313,6 @@ class GNNStackSiamese(GNNStack):
         return (emb_s, emb_t), x
 
 
-if __name__ == "__main__":
-
-    test_model = GNNStack(
-        hidden_dim=32,
-        num_convolutional_layers=3,
-        no_dense_layers=1,
-        direction="single",
-        dropout_rate=0.25,
-        # task="premise",
-    )
-    print(test_model)
-
-
 def load_model(model_dir, learning_task):
     model = get_model(model_dir, learning_task)
     model.load_state_dict(torch.load(os.path.join(model_dir, "model_gnn.pt")))
@@ -334,3 +332,21 @@ def get_model(experiment_dir: str, learning_task: LearningTask) -> nn.Module:
 
     model = model.to(config.device)
     return model
+
+
+def main():
+
+    test_model = GNNStack(
+        hidden_dim=24,
+        num_convolutional_layers=8,
+        no_dense_layers=1,
+        direction="separate",
+        dropout_rate=0.25,
+    )
+    from torchinfo import summary
+
+    summary(test_model)
+
+
+if __name__ == "__main__":
+    main()
