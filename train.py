@@ -9,6 +9,7 @@ import torch_geometric as pyg
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Tuple, Callable, Optional
+import gc
 
 import config
 from dataset import get_data_loader, BenchmarkType, LearningTask
@@ -66,7 +67,7 @@ def get_train_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def train_step(model: nn.Module, train_data: pyg.loader.DataLoader, criterion, optimizer) -> None:
+def train_step(model: nn.Module, train_data: pyg.loader.DataLoader, criterion, optimizer, scheduler) -> None:
     model.train()
     optimizer.zero_grad(set_to_none=True)  # Reset the gradients to None
 
@@ -77,6 +78,8 @@ def train_step(model: nn.Module, train_data: pyg.loader.DataLoader, criterion, o
         loss = criterion(out, batch.y, reduction="mean")  # Compute the loss.
         loss.backward()  # Derive gradients.
         optimizer.step()  # Update parameters based on gradients.
+        if scheduler is not None:
+            scheduler.step()
         # optimizer.zero_grad()  # Clear gradients.
         optimizer.zero_grad(set_to_none=True)  # Reset the gradients to None
         del batch
@@ -87,9 +90,9 @@ def get_score(task, out, y):
     if task == LearningTask.PREMISE:
         # Premise used accuracy
         pred = torch.sigmoid(out).round().long()
-        score = y.eq(pred).sum().item()
+        score = y.eq(pred).sum().detach().item()
     elif task == LearningTask.SIMILARITY:
-        score = F.l1_loss(out, y, reduction="sum").item()
+        score = F.l1_loss(out, y, reduction="sum").detach().item()
     else:
         raise ValueError()
 
@@ -108,7 +111,7 @@ def test_step(
 
     score = 0
     total_samples = 0
-    total_loss = 0.0
+    total_loss = torch.tensor(0.0)
 
     for batch in test_data:  # Iterate in batches over the training/test dataset.
         batch = batch.to(config.device)
@@ -125,7 +128,7 @@ def test_step(
 
     score = score / total_samples  # Derive average score
     total_loss /= total_samples
-    total_loss = total_loss.item()
+    total_loss = total_loss.detach().item()
 
     if tag is not None:
         writer.report_score(tag, score)
@@ -181,9 +184,10 @@ def main():
     writer = Writer(model)
 
     # Training optimisers
-    # optimizer = SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4, nesterov=True)
-    # scheduler = CyclicLR(optimizer, 0.01, 0.1, mode="exp_range", gamma=0.99995, step_size_up=4000)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+    scheduler = None
+    # 0.01 is good 0.001 is v good 0.002 was best?
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.002)
+
     criterion = get_criterion(learning_task)
 
     # Set up training
@@ -197,7 +201,7 @@ def main():
 
     for epoch in range(0, args.epochs):
 
-        train_step(model, train_data, criterion, optimizer)
+        train_step(model, train_data, criterion, optimizer, scheduler)
         # writer.report_model_parameters() # FIXME - crashes for unknown reason...
 
         train_loss, train_score = test_step(model, train_data, writer, criterion, learning_task, tag="train")
@@ -225,6 +229,7 @@ def main():
 
         # Increment epoch for next iteration
         writer.on_step()
+        gc.collect()
 
     # Check on test set if set
     if not args.skip_testing:
@@ -238,7 +243,7 @@ def main():
         print(f"# Test Loss: {test_loss:.4f}, Test Score: {test_score:.4f}")
 
     # TODO check on test data?
-    print(writer.get_scores())
+    #print(writer.get_scores())
 
     # Save the training history
     writer.save_scores(args.experiment_dir)
