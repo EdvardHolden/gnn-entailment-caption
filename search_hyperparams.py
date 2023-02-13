@@ -91,16 +91,12 @@ def launch_training_job(job_dir: str, args: Namespace) -> None:
             # Parse ActionStoreFalse option
             if not args.__dict__[param]:  # if set to false - add flag
                 cmd += f" --{param} "
-        elif (
-            param == "es_patience"
-        ):  # Cannot handle None values so only set if not None # FIXMe could be better
-            if args.__dict__[param] is not None:
-                cmd += f" --{param} {args.__dict__[param]} "
         elif param == "experiment_dir":
             cmd += f" --{param} {job_dir}"
         else:
-            # Include option and value
-            cmd += f" --{param} {args.__dict__[param]} "
+            if args.__dict__[param] is not None:  # Cannot parse none values
+                # Include option and value
+                cmd += f" --{param} {args.__dict__[param]} "
 
     print(cmd)
     check_call(cmd, shell=True, stdout=None)
