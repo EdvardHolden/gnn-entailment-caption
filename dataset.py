@@ -22,6 +22,7 @@ from read_problem import read_problem_deepmath, read_problem_tptp
 
 target_min_max_scaler = None  # TODO HACK
 
+
 class BenchmarkType(Enum):
     DEEPMATH = "deepmath"
     TPTP = "tptp"
@@ -57,8 +58,8 @@ def load_ids(id_file) -> List[str]:
 def _process_problem(
     problem: str,
     problem_dir: str,
-    benchmark_type: BenchmarkType,
-    remove_argument_node: bool,
+    benchmark_type: BenchmarkType = BenchmarkType.DEEPMATH,
+    remove_argument_node: bool = False,
     pre_filter=None,
     pre_transform=None,
 ) -> Data:
@@ -391,7 +392,6 @@ class PairData(Data):
             return self.x_t.size(0)
         else:
             return super().__inc__(key, value, *args, **kwargs)
-
 
 
 def get_data_loader(
