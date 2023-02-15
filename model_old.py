@@ -5,7 +5,7 @@ from torch_geometric import nn as geom
 
 import config
 
-LAYERS = 24 # TODO what is this variable?
+LAYERS = 24  # TODO what is this variable?
 K = 8
 
 
@@ -82,12 +82,12 @@ class Model(Module):
         # TODO why is global pool not used???
 
         x = self.input(x)
-        x = self.dense(x, edge_index)
-        x = x[premise_index]
-        x = self.output(x).squeeze(-1)
+        emb = self.dense(x, edge_index)
+        x_premise = emb[premise_index]
+        x_premise = self.output(x_premise).squeeze(-1)
 
-        return None, x
-        #return x
+        return emb, x_premise
+        # return x
 
 
 def main():
@@ -97,7 +97,7 @@ def main():
     summary(model)
     print()
     print()
-    #print(model)
+    # print(model)
 
 
 if __name__ == "__main__":
