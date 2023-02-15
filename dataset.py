@@ -319,7 +319,7 @@ class TorchMemoryDataset(InMemoryDataset):
         self.remove_argument_node = remove_argument_node
 
         # Load problem ids
-        self.problem_ids = load_ids(id_file)
+        self.problem_ids = torch.tensor(load_ids(id_file))
 
         # Initialise the super
         super().__init__(self.root.name, transform, pre_transform)
@@ -328,7 +328,7 @@ class TorchMemoryDataset(InMemoryDataset):
         self.data, self.slices = torch.load(self.processed_paths[0])
 
     @property
-    def raw_file_names(self) -> List[str]:
+    def raw_file_names(self) -> torch.tensor:
         # These are the ids and not really the raw names
         return self.problem_ids
 
