@@ -20,6 +20,7 @@ from graph_parser import graph
 
 from read_problem import read_problem_deepmath, read_problem_tptp
 
+target_min_max_scaler = None  # TODO HACK
 
 class BenchmarkType(Enum):
     DEEPMATH = "deepmath"
@@ -222,6 +223,76 @@ class TorchLoadDataset(Dataset):
             torch.save(data, out_file)
 
 
+class PairDataset(TorchLoadDataset):
+    def __init__(self, *args, **kwargs):
+        # Keep everything in the base dataset
+        self.base_dataset = TorchLoadDataset(*args, **kwargs)
+
+        self.meta_dataset_path = os.path.join(
+            config.dpath, "unsupervised_data/" + Path(self.base_dataset.id_file).stem
+        )
+
+        self.targets = self._load_targets()
+        self.pair_ids = self._load_pair_ids()
+        self.numerical_ids = torch.tensor(list(range(len(self.targets))))
+        assert len(self.targets) == len(self.pair_ids) == len(self.numerical_ids)
+        super().__init__(*args, **kwargs)
+
+    @property
+    def raw_file_names(self) -> torch.tensor:
+        # These are the ids and not really the raw names
+        return self.numerical_ids
+
+    def indices(self) -> Sequence:
+        return self.numerical_ids
+
+    def len(self) -> int:
+        return len(self.targets)
+
+    def _load_pair_ids(self) -> torch.tensor:
+        with open(os.path.join(self.meta_dataset_path, "idx.pkl"), "rb") as f:
+            ids = pickle.load(f)
+        ids = [(int(s), int(t)) for (s, t) in ids]
+
+        return torch.tensor(ids)
+
+    def _load_targets(self) -> torch.tensor:
+
+        with open(os.path.join(self.meta_dataset_path, "target.pkl"), "rb") as f:
+            targets = pickle.load(f)
+            targets = np.array(targets).reshape(-1, 1)
+            # assert len(ids) == len(targets)
+
+        # Process targets
+        targets = np.sqrt(targets)
+        global target_min_max_scaler  # FIXME quite bad
+        if target_min_max_scaler is None:
+            target_min_max_scaler = MinMaxScaler().fit(targets)
+        targets = target_min_max_scaler.transform(targets)
+        targets = targets.reshape(-1)  # Back in expected format
+
+        return torch.tensor(targets)
+
+    def get(self, idx: int) -> Data:
+
+        # Get hold of the correct information
+        target = self.targets[idx]
+        id_s = self.pair_ids[idx][0]
+        id_t = self.pair_ids[idx][1]
+        data_s = self.base_dataset.get(self.base_dataset.problem_ids[id_s])
+        data_t = self.base_dataset.get(self.base_dataset.problem_ids[id_t])
+
+        # Construct pair data point
+        data = PairData(
+            edge_index_s=data_s.edge_index,
+            x_s=data_s.x,
+            edge_index_t=data_t.edge_index,
+            x_t=data_t.x,
+            y=target,
+        )
+        return data
+
+
 def get_context(self_object) -> str:
 
     if self_object.remove_argument_node:
@@ -322,53 +393,6 @@ class PairData(Data):
             return super().__inc__(key, value, *args, **kwargs)
 
 
-target_min_max_scaler = None  # TODO HACK
-
-
-def get_pair_dataset(dataset, dataset_path) -> List[PairData]:
-
-    # Get files
-    with open(os.path.join(dataset_path, "idx.pkl"), "rb") as f:
-        ids = pickle.load(f)
-
-    with open(os.path.join(dataset_path, "target.pkl"), "rb") as f:
-        targets = pickle.load(f)
-        targets = np.array(targets).reshape(-1, 1)
-    assert len(ids) == len(targets)
-
-    # Process targets
-    targets = np.sqrt(targets)
-    global target_min_max_scaler  #  FIXME quite bad
-    if target_min_max_scaler is None:
-        target_min_max_scaler = MinMaxScaler().fit(targets)
-    targets = target_min_max_scaler.transform(targets)
-    targets = targets.reshape(-1)  # Back in expected format
-
-    # Load problem pairs
-    pair_list = []
-    for target, pair in zip(targets, ids):
-        # Get left and right graph in the pair
-        if isinstance(dataset, TorchLoadDataset):
-            data_s = dataset.get(dataset.problem_ids[int(pair[0])])
-            data_t = dataset.get(dataset.problem_ids[int(pair[1])])
-        else:
-            data_s = dataset.get(pair[0])
-            data_t = dataset.get(pair[1])
-
-        # Construct pair data point
-        data = PairData(
-            edge_index_s=data_s.edge_index,
-            x_s=data_s.x,
-            edge_index_t=data_t.edge_index,
-            x_t=data_t.x,
-            y=torch.tensor(target),
-        )
-
-        # Add to list
-        pair_list += [data]
-
-    return pair_list
-
 
 def get_data_loader(
     id_file,
@@ -380,22 +404,22 @@ def get_data_loader(
     **kwargs,
 ) -> DataLoader:
 
-    if in_memory:
-        dataset = TorchMemoryDataset(id_file, benchmark_type, **kwargs)
-    else:
-        dataset = TorchLoadDataset(id_file, benchmark_type, **kwargs)
-    kwargs.pop("transform", None)
-    kwargs.pop("remove_argument_node", None)
-
-    # Create pair data dataset from loaded problems if set
-    if task == LearningTask.SIMILARITY:
-        dataset_path = os.path.join(config.dpath, "unsupervised_data/" + Path(id_file).stem)
-        dataset = get_pair_dataset(dataset, dataset_path)
+    if task is LearningTask.PREMISE:
+        if in_memory:
+            dataset = TorchMemoryDataset(id_file, benchmark_type, **kwargs)
+        else:
+            dataset = TorchLoadDataset(id_file, benchmark_type, **kwargs)
+        follow_batch = None
+        print("Dataset:", dataset)
+    elif task is LearningTask.SIMILARITY:
+        # Only out of memory dataset
+        dataset = PairDataset(id_file, benchmark_type, **kwargs)
         follow_batch = ["x_s", "x_t"]  # Needed for correct sizes
         print("Unsupervised dataset:", len(dataset))
     else:
-        follow_batch = None
-        print("Dataset:", dataset)
+        raise ValueError(f"No dataset loader implemented for task {task}")
+    kwargs.pop("transform", None)
+    kwargs.pop("remove_argument_node", None)
 
     return DataLoader(
         dataset,
@@ -422,9 +446,15 @@ def test_data_loader():
 
 
 if __name__ == "__main__":
+    """
     print(1)
     test_dataset()
     print(2)
     test_data_loader()
     print(3)
     print(TorchLoadDataset("id_files/dev_100.txt"))
+    """
+
+    d = PairDataset("id_files/validation.txt")
+    print(d)
+    print(d.get(0))
