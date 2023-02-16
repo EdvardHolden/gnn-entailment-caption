@@ -1,9 +1,15 @@
 {
-	"hidden_dim": 64,
-	"num_convolutional_layers": 4,
-	"no_dense_layers": 1,
-	"direction": "single",
-	"dropout_rate": 0.0,
-    "normalisation": "layer",
-    "skip_connection": false 
+	"model": {
+		"hidden_dim": 64,
+		"num_convolutional_layers": 4,
+		"no_dense_layers": 1,
+		"gcn_type": "single",
+		"dropout_rate": 0.0,
+		"normalisation": "layer",
+		"skip_connection": false
+	},
+	"graph": {
+		"remove_argument_node": false,
+		"graph": "undirected"
+	}
 }
