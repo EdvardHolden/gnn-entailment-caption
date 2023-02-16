@@ -13,10 +13,14 @@ from itertools import product
 import multiprocessing
 import pickle
 import numpy as np
+from typing import Dict
 from sklearn.preprocessing import MinMaxScaler
+from torch_geometric.transforms import ToUndirected
+
 
 import config
 from graph_parser import graph
+from utils import load_params
 
 from read_problem import read_problem_deepmath, read_problem_tptp
 
@@ -46,6 +50,19 @@ class LearningTask(Enum):
     @classmethod
     def list(cls):
         return list(map(lambda c: c.value, cls))
+
+
+def load_graph_params(model_dir: str) -> Dict:
+    params = load_params(model_dir)["graph"]
+
+    # Replace undirected entry with the to undirected transformation
+    assert params["graph"] in ["directed", "undirected"]
+    if params["graph"] == "undirected":
+        params["transform"] = ToUndirected()
+    params.pop("graph", None)
+
+    assert "remove_argument_node" in params
+    return params
 
 
 def load_ids(id_file) -> List[str]:

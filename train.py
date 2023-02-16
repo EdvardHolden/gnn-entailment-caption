@@ -4,7 +4,6 @@ import torch
 import argparse
 import numpy as np
 import os
-from torch_geometric.transforms import ToUndirected
 import torch_geometric as pyg
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,7 +11,7 @@ from typing import Tuple, Callable, Optional
 import gc
 
 import config
-from dataset import get_data_loader, BenchmarkType, LearningTask
+from dataset import get_data_loader, BenchmarkType, LearningTask, load_graph_params
 from model import get_model
 from transfer_learning import get_transfer_model
 from stats_writer import Writer
@@ -59,10 +58,12 @@ def get_train_parser() -> argparse.ArgumentParser:
         "--in_memory", action="store_true", help="Set dataset to in memory (may not always work)"
     )
 
+    """
     parser.add_argument("--graph_bidirectional", action="store_true", help="Makes the graphs bidirectional")
     parser.add_argument(
         "--graph_remove_argument_node", action="store_true", help="Removes the argument nodes from the graphs"
     )
+    """
 
     return parser
 
@@ -155,30 +156,24 @@ def main():
     args = parser.parse_args()
     learning_task = args.learning_task
 
-    dataset_params = {}
-    if args.graph_bidirectional:
-        dataset_params["transform"] = ToUndirected()
-    if args.graph_remove_argument_node:
-        dataset_params["remove_argument_node"] = True
-
-    # Make experiment dir if not exists
-    if not os.path.exists(args.experiment_dir):
-        os.makedirs(args.experiment_dir)
-
-    # Get datasets wrapper in a loader
-    train_data = get_data_loader(
-        args.train_id, args.benchmark_type, task=learning_task, in_memory=args.in_memory, **dataset_params
-    )
-    val_data = get_data_loader(
-        args.val_id, args.benchmark_type, task=learning_task, in_memory=args.in_memory, **dataset_params
-    )
-
     # Initialise model
     if args.transfer_model_dir is not None:
         # Get pre-trained model from the provided path
+        graph_params = load_graph_params(args.transfer_model_dir)
         model = get_transfer_model(args.transfer_model_dir, learning_task)
     else:
+        graph_params = load_graph_params(args.experiment_dir)
         model = get_model(args.experiment_dir, learning_task)
+
+    print(graph_params)
+
+    # Get datasets wrapper in a loader
+    train_data = get_data_loader(
+        args.train_id, args.benchmark_type, task=learning_task, in_memory=args.in_memory, **graph_params
+    )
+    val_data = get_data_loader(
+        args.val_id, args.benchmark_type, task=learning_task, in_memory=args.in_memory, **graph_params
+    )
 
     # Initialise writer
     writer = Writer(model)
@@ -243,7 +238,7 @@ def main():
         print(f"# Test Loss: {test_loss:.4f}, Test Score: {test_score:.4f}")
 
     # TODO check on test data?
-    #print(writer.get_scores())
+    # print(writer.get_scores())
 
     # Save the training history
     writer.save_scores(args.experiment_dir)

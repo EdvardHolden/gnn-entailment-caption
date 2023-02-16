@@ -10,14 +10,16 @@ from typing import Callable, Optional, Dict
 
 import config
 from dataset import LearningTask
+from utils import load_params
 
 GCN_NORMALISATION = {"batch": nn.BatchNorm1d, "layer": nn.LayerNorm}
 
 
 def load_model_params(model_dir: str) -> Dict:
-    # Load parameters from model directory and create namespace
-    with open(os.path.join(model_dir, "params.json"), "r") as f:
-        params = json.load(f)
+
+    params = load_params(model_dir)["model"]
+    assert params["normalisation"] in GCN_NORMALISATION.keys()
+    assert params["gcn_type"] in ["single", "dual_concat", "dual_pool"]
     return params
 
 
@@ -28,6 +30,17 @@ def get_dense_output_network(task: LearningTask, no_dense_layers: int, hidden_di
         return DenseOutput(hidden_dim * 2, no_dense_layers, hidden_dim, dropout_rate)
     else:
         raise ValueError(f"No dense output network for: {task}")
+
+
+def get_gcn_base(gcn_type: str) -> Callable:
+    # TODO this could be a dictionary..
+
+    if gcn_type == "single":
+        return GCNDirectional
+    elif gcn_type == "dual_concat":
+        return GCNDualConcat
+    else:
+        raise ValueError(f"Unknown gcn type {gcn_type}")
 
 
 class DenseOutput(torch.nn.Module):
@@ -124,6 +137,7 @@ class GCNDirectional(torch.nn.Module):
         # Add convolutional layers
         self.convs = build_conv_model(num_convolutional_layers, hidden_dim, self.flow)
 
+        # TODO refactor this
         # Add normalisation layers used in between graph convolutions
         self.normalisation = normalisation
         if normalisation is None:
@@ -155,7 +169,7 @@ class GCNDirectional(torch.nn.Module):
         return emb, x
 
 
-class GCNBiDirectional(torch.nn.Module):
+class GCNDualConcat(torch.nn.Module):
     def __init__(
         self,
         hidden_dim: int,
@@ -164,7 +178,7 @@ class GCNBiDirectional(torch.nn.Module):
         normalisation: Optional[str],
         skip_connection: bool,
     ):
-        super(GCNBiDirectional, self).__init__()
+        super(GCNDualConcat, self).__init__()
 
         # Set variables
         self.hidden_dim = hidden_dim
@@ -226,7 +240,7 @@ class GNNStack(torch.nn.Module):
         hidden_dim: int,
         num_convolutional_layers: int,
         no_dense_layers: int,
-        direction: str,
+        gcn_type: str,
         dropout_rate: float = 0.0,
         no_embeddings: int = len(config.NODE_TYPE),
         task: LearningTask = LearningTask.PREMISE,
@@ -243,14 +257,9 @@ class GNNStack(torch.nn.Module):
         # Add embedding layer
         self.node_embedding = Embedding(no_embeddings, hidden_dim)
 
-        # Add GCN layer
-        if direction == "single":
-            gcn_base = GCNDirectional
-        elif direction == "separate":
-            gcn_base = GCNBiDirectional
-        else:
-            raise ValueError(f"Unknown gcn direction {direction}")
-        self.direction = direction
+        # Add GCN layer(s)
+        self.gcn_type = gcn_type
+        gcn_base = get_gcn_base(self.gcn_type)
 
         self.gcn = gcn_base(
             hidden_dim=self.hidden_dim,
@@ -277,6 +286,7 @@ class GNNStack(torch.nn.Module):
 
         return emb, x
 
+    """
     def __str__(self) -> str:
         # tODO should really be nested???
         return (
@@ -284,6 +294,7 @@ class GNNStack(torch.nn.Module):
             f"_no_dense_layers{self.post_mp.no_dense_layers}_direction_{self.direction}_drop_out_rate_{self.dropout_rate}"
             f"_normalisation_{self.gcn.normalisation}_skip_connection_{self.gcn.skip_connection}"
         )
+    """
 
 
 class GNNStackSiamese(GNNStack):
@@ -292,14 +303,17 @@ class GNNStackSiamese(GNNStack):
         super(GNNStackSiamese, self).__init__(**kwargs)
 
     def forward(self, data):
+        # Extract data
         x_s, edge_index_s = data.x_s, data.edge_index_s
         x_t, edge_index_t = data.x_t, data.edge_index_t
 
+        # Embed node types
         x_s = self.node_embedding(x_s)
         x_t = self.node_embedding(x_t)
 
+        # Embed s and t graphs using the same neural network
         emb_s, x_s = self.gcn(x_s, edge_index_s)
-        emb_t, x_s = self.gcn(x_s, edge_index_s)
+        emb_t, x_t = self.gcn(x_t, edge_index_t)
 
         # Pool the graph
         x_s = global_mean_pool(x_s, data.x_s_batch)
