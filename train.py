@@ -197,7 +197,6 @@ def main():
     for epoch in range(0, args.epochs):
 
         train_step(model, train_data, criterion, optimizer, scheduler)
-        # writer.report_model_parameters() # FIXME - crashes for unknown reason...
 
         train_loss, train_score = test_step(model, train_data, writer, criterion, learning_task, tag="train")
         val_loss, val_score = test_step(model, val_data, writer, criterion, learning_task, tag="val")
@@ -232,12 +231,11 @@ def main():
         del train_data
         del val_data
         test_data = get_data_loader(
-            args.test_id, args.benchmark_type, task=learning_task, in_memory=args.in_memory, **dataset_params
+            args.test_id, args.benchmark_type, task=learning_task, in_memory=args.in_memory, **graph_params
         )
         test_loss, test_score = test_step(model, test_data, writer, criterion, learning_task, tag="test")
         print(f"# Test Loss: {test_loss:.4f}, Test Score: {test_score:.4f}")
 
-    # TODO check on test data?
     # print(writer.get_scores())
 
     # Save the training history

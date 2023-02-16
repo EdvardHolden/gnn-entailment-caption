@@ -1,11 +1,9 @@
 import os
-import json
 import torch
 from torch import nn as nn
 from torch.nn import Embedding
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv, Linear, MessagePassing, global_mean_pool
-import torch.nn as nn
 from typing import Callable, Optional, Dict
 
 import config
@@ -39,6 +37,8 @@ def get_gcn_base(gcn_type: str) -> Callable:
         return GCNDirectional
     elif gcn_type == "dual_concat":
         return GCNDualConcat
+    elif gcn_type == "dual_pool":
+        return GCNDualPool
     else:
         raise ValueError(f"Unknown gcn type {gcn_type}")
 
@@ -224,6 +224,62 @@ class GCNDualConcat(torch.nn.Module):
             # Merge through linear
             x = self.linear[i](x)
             emb = x
+            x = F.relu(x)
+            x = F.dropout(x, p=self.dropout_rate, training=self.training)
+
+            # Normalise, if set
+            if self.lns is not None and not i == self.num_convolutional_layers - 1:  # Apply normalisation
+                x = self.lns[i](x)
+
+        return emb, x
+
+
+class GCNDualPool(torch.nn.Module):
+    def __init__(
+        self,
+        hidden_dim: int,
+        num_convolutional_layers: int,
+        dropout_rate: float,
+        normalisation: Optional[str],
+        skip_connection: bool,
+    ):
+        super(GCNDualPool, self).__init__()
+
+        # Set variables
+        self.hidden_dim = hidden_dim
+        self.num_convolutional_layers = num_convolutional_layers
+        self.dropout_rate = dropout_rate
+        self.skip_connection = skip_connection
+
+        # Add convolutional layers
+        self.convs_up = build_conv_model(num_convolutional_layers, hidden_dim, flow="source_to_target")
+        self.convs_down = build_conv_model(num_convolutional_layers, hidden_dim, flow="target_to_source")
+
+        # Add normalisation layers used in between graph convolutions
+        if normalisation is None:
+            self.lns = None
+        else:
+            self.normaliser = GCN_NORMALISATION[normalisation]
+            self.lns = build_normalisation_layers(self.normaliser, hidden_dim, num_convolutional_layers - 1)
+        self.normalisation = normalisation
+
+    def forward(self, x, edge_index):
+
+        # Iterate over each convolutional sequence
+        emb = None
+        for i in range(self.num_convolutional_layers):
+
+            # Apply convolutions
+            x_up = self.convs_up[i](x, edge_index)
+            x_down = self.convs_down[i](x, edge_index)
+
+            # Check if applying skip connection
+            if self.skip_connection:
+                x_up = x + x_up
+                x_down = x + x_down
+
+            # Compute the average embedding
+            x = (x_up + x_down) / 2
             x = F.relu(x)
             x = F.dropout(x, p=self.dropout_rate, training=self.training)
 

@@ -352,8 +352,6 @@ class TorchMemoryDataset(InMemoryDataset):
 
     @property
     def processed_file_names(self) -> List[str]:
-        # return [Path(prob).stem + ".pt" for prob in self.problems]
-        context = get_context(self)
         return [self._get_file_name()]
 
     def _get_file_name(self) -> str:
