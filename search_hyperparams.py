@@ -13,6 +13,8 @@ from typing import Optional
 
 import config
 from train import get_train_parser
+import copy
+from typing import List, Dict, Tuple
 
 
 def create_job_dir(root_dir: str, job_name: str, params=Optional[dict]) -> str:
@@ -102,30 +104,54 @@ def launch_training_job(job_dir: str, args: Namespace) -> None:
     check_call(cmd, shell=True, stdout=None)
 
 
-def main():
-
-    parser = get_hyperparam_parser()
-    args = parser.parse_args()
+def get_hp_parameters(parameter_space_file: str) -> List[Tuple[Dict, str]]:
 
     # Define the hyperparameter space
-    with open(args.parameter_space, "r") as f:
+    with open(parameter_space_file, "r") as f:
         hp_space = json.load(f)
 
-    # Cartesian product of the parameter space
-    hp_parameters = [dict(zip(hp_space, v)) for v in itertools.product(*hp_space.values())]
+    # Extract the parameters as a single dict
+    hp_values = {}
+    for section in hp_space.values():
+        hp_values = {**hp_values, **section}
 
-    # Iterate over each param config
-    no_skipped_runs = 0
-    for param_config in tqdm(hp_parameters):
+    # Cartesian product of the parameter values
+    hp_parameters = [dict(zip(hp_values, v)) for v in itertools.product(*hp_values.values())]
+
+    # Get the reconstructed dict and job name of each configuration
+    configs = []
+    for param_config in hp_parameters:
+        # Want to copy the structure
+        res = copy.deepcopy(hp_space)
+        # Assign values to the correct structure
+        for section in res:
+            for param in res[section]:
+                res[section][param] = param_config[param]
 
         # Make config description - limit to only variable parameters
         job_name = "_".join(
             [
                 p + "_" + str(v).replace(" ", "_")  # Cater for multiple axiom orders
                 for p, v in sorted(param_config.items())
-                if len(hp_space[p]) > 1
+                if len(hp_values[p]) > 1
             ]
         )
+        configs += [(res, job_name)]
+
+    return configs
+
+
+def main():
+
+    parser = get_hyperparam_parser()
+    args = parser.parse_args()
+
+    hp_parameters = get_hp_parameters(args.parameter_space)
+
+    # Iterate over each param config
+    no_skipped_runs = 0
+
+    for param_config, job_name in tqdm(hp_parameters):
 
         print(f"\n### Processing job: {job_name}")
 
