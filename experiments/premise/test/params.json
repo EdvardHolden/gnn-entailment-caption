@@ -3,7 +3,7 @@
 		"hidden_dim": 64,
 		"num_convolutional_layers": 4,
 		"no_dense_layers": 1,
-		"gcn_type": "single",
+		"gcn_type": "dual_pool",
 		"dropout_rate": 0.0,
 		"normalisation": "layer",
 		"skip_connection": false
