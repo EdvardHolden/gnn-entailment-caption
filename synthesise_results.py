@@ -13,6 +13,7 @@ from tabulate import tabulate
 parser = argparse.ArgumentParser()
 parser.add_argument("result_dir", default="experiments", help="Directory containing results of experiments")
 parser.add_argument("--restrict_metric", default=None, nargs="+", help="Restrict table to current metric")
+parser.add_argument("--round", default=None, type=int, help='Number of digits to round')
 
 
 def aggregate_metrics(parent_dir, metrics):
@@ -62,6 +63,10 @@ def main():
     if args.restrict_metric is not None:
         for exp in metrics:
             metrics[exp] = {k: v for k, v in metrics[exp].items() if k in args.restrict_metric}
+
+    if args.round is not None:
+        for exp in metrics:
+            metrics[exp] = {k: round(v, args.round) for k, v in metrics[exp].items()}
 
     # Create score table
     table = metrics_to_table(metrics)
