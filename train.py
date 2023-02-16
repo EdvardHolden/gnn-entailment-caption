@@ -165,8 +165,6 @@ def main():
         graph_params = load_graph_params(args.experiment_dir)
         model = get_model(args.experiment_dir, learning_task)
 
-    print(graph_params)
-
     # Get datasets wrapper in a loader
     train_data = get_data_loader(
         args.train_id, args.benchmark_type, task=learning_task, in_memory=args.in_memory, **graph_params
