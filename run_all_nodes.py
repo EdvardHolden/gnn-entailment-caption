@@ -9,11 +9,15 @@ from tqdm import tqdm
 
 # TODO if running python - might have to source ./bashrc first due to pyenv not loading on remote like that
 # TODO cannot figure out pythoin issue. bashrc is loading and everything .. Just doing HACK
-PYTHON_PATH = "/shareddata/homes/holden/.pyenv/shims/python3"
+
+# PYTHON_PATH = "/shareddata/homes/holden/.pyenv/shims/python3"
+PYTHON_PATH = "/shareddata/home/holden/.pyenv/shims/python3"
 
 NOHUP_POST = " >> nohup_{0}.out 2>&1  & "  # dev/null makes sure we do not stick around to wait for the process to terminate
 
-BAD_NODES = [2, 8, 13, 14, 15, 16, 20]
+# TODO FIX
+# BAD_NODES = [2, 8, 13, 14, 15, 16, 20]
+BAD_NODES = []
 
 
 def main():
@@ -47,7 +51,9 @@ def main():
         if i in BAD_NODES:
             continue
 
-        node = f"cc{i:02}"
+        # TODO HACK FIX
+        node = f"cc2-{i:02}"
+        print(node)
 
         try:
 
@@ -55,6 +61,7 @@ def main():
                 cmd_run = cmd.format(i)
             else:
                 cmd_run = cmd
+            print(cmd_run)
 
             proc = subprocess.Popen(
                 f"ssh {node} ' {cmd_run} '",

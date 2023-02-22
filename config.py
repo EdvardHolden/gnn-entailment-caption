@@ -14,12 +14,12 @@ device = "cpu"
 
 BENCHMARK_PATHS = {"deepmath": Path(__file__).parent / "nndata"}
 # BATCH_SIZE = 64
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 
 EPOCHS = 80
 ES_PATIENCE = 5
 
-TRAIN_ID = "id_files/train.txt"
+TRAIN_ID = "id_files/train_half.txt"
 VAL_ID = "id_files/validation.txt"
 TEST_ID = "id_files/test.txt"
 

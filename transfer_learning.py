@@ -6,7 +6,11 @@ from dataset import LearningTask
 def get_transfer_model(model_path: str, new_task: LearningTask):
 
     # Determine the old task - only two available
-    if new_task is LearningTask.PREMISE:
+    if "premise" in model_path:
+        model_task = LearningTask.PREMISE
+    elif "similarity" in model_path:
+        model_task = LearningTask.SIMILARITY
+    elif new_task is LearningTask.PREMISE:
         model_task = LearningTask.SIMILARITY
     elif new_task is LearningTask.SIMILARITY:
         model_task = LearningTask.PREMISE

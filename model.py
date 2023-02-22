@@ -204,7 +204,6 @@ class GCNDualConcat(torch.nn.Module):
     def forward(self, x, edge_index):
 
         # Iterate over each convolutional sequence
-        emb = None
         for i in range(self.num_convolutional_layers):
 
             # Apply convolutions
@@ -231,7 +230,7 @@ class GCNDualConcat(torch.nn.Module):
             if self.lns is not None and not i == self.num_convolutional_layers - 1:  # Apply normalisation
                 x = self.lns[i](x)
 
-        return emb, x
+        return x, x
 
 
 class GCNDualPool(torch.nn.Module):
@@ -266,7 +265,6 @@ class GCNDualPool(torch.nn.Module):
     def forward(self, x, edge_index):
 
         # Iterate over each convolutional sequence
-        emb = None
         for i in range(self.num_convolutional_layers):
 
             # Apply convolutions
@@ -287,7 +285,7 @@ class GCNDualPool(torch.nn.Module):
             if self.lns is not None and not i == self.num_convolutional_layers - 1:  # Apply normalisation
                 x = self.lns[i](x)
 
-        return emb, x
+        return x, x
 
 
 class GNNStack(torch.nn.Module):
