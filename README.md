@@ -1,4 +1,4 @@
-# GNNs for first-order formulae
+# Graph Neural Networks for First-order Formulae
 
 This repo examines different graph encoding and GNN configurations for first-order reasoning.
 It deals with finding good graph embeddings for a supervised binary premise selection task,
@@ -71,6 +71,3 @@ Run the script `generate_synthetic_dataset.py` and set the input arguments to fi
 # Authors
 - [Edvard Holden](https://github.com/EdvardHolden)
 
-
-
- 
