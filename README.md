@@ -33,6 +33,12 @@ If running into issues with CUDA installation, one solution can be to run:
 
 ``export CUDA_VISIBLE_DEVICES=""``
 
+# Datasets
+
+The original DeepMath dataset is contained within `nndata.zip`.
+The extended dataset used for evaluation is found in `merged_problems.zip`
+
+
 # Experiments
 
 Problem representation experiments for the thesis chapter, described briefly here.
@@ -63,6 +69,9 @@ It assumes that the models exists from previous experiments and can be changed f
 # Compute embeddings
 
 Run the script `extract_features.py` and set the input arguments to fit the desired requirements.
+e.g.
+**TODO**
+
 
 # Generate Unsupervised Datasets
 

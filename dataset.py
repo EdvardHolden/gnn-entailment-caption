@@ -55,7 +55,7 @@ class LearningTask(Enum):
 def load_graph_params(model_dir: str) -> Dict:
     params = load_params(model_dir)["graph"]
 
-    # Replace undirected entry with the to undirected transformation
+    # Replace undirected entry with the toUndirected transformation
     assert params["graph"] in ["directed", "undirected"]
     if params["graph"] == "undirected":
         params["transform"] = ToUndirected()

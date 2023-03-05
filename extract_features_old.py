@@ -31,10 +31,6 @@ parser.add_argument(
     "--library", choices=["tptp", "deepmath"], help="Whether parsing TPTP or Deepmath style problems"
 )
 
-# TODO add debug option!
-# TODO add output path option!
-# TODO load from a given model
-
 # Create hooks
 activation = {}
 
