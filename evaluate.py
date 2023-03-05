@@ -59,17 +59,16 @@ def evaluate() -> None:
     parser = get_evaluate_parser()
     args = parser.parse_args()
 
-    # Compute the score according to the thingy
+    # Load the model
     model = load_model(args.model_dir, args.learning_task)
+    model = model.to(config.device)
+    model.eval()
 
     # Get data loader
     graph_params = load_graph_params(args.model_dir)
     eval_data = get_data_loader(
         args.id_file, args.benchmark_type, task=args.learning_task, in_memory=args.in_memory, **graph_params
     )
-
-    model = model.to(config.device)
-    model.eval()
 
     eval_score = score_model(model, eval_data, args.learning_task)
     print(f"Evaluation score: {eval_score:.2f}")
