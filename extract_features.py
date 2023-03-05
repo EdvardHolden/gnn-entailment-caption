@@ -7,36 +7,51 @@ from sklearn.metrics import pairwise_distances
 import numpy as np
 import argparse
 
-from model import Model
-from common import mk_loader_ltb
-from dataset import get_data_loader
+
+from dataset import get_data_loader, BenchmarkType, load_graph_params, LearningTask
 import config
+from model import load_model
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--nodes",
-    default="all",
-    choices=["all", "conjecture", "premise"],
-    help="The type of nodes to use in the final embedding",
-)
-parser.add_argument("--model_path", default="model.pt", help="Path to the model used for embedding")
-parser.add_argument("--id_file", default="deepmath.txt", help="Name of the ID file found in id_files/")
-parser.add_argument(
-    "--print_distances",
-    action="store_true",
-    default=False,
-    help="Prints the euclidean and cosine distance matrix for the computed embedding vectors",
-)
-parser.add_argument(
-    "--library", choices=["tptp", "deepmath"], help="Whether parsing TPTP or Deepmath style problems"
-)
 
-# TODO add debug option!
-# TODO add output path option!
-# TODO load from a given model
+def get_extraction_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
 
-# Create hooks
-activation = {}
+    parser.add_argument("model_dir", help="Path to the model used for embedding")
+    parser.add_argument(
+        "learning_task",
+        # default=LearningTask.PREMISE,
+        choices=list(LearningTask),
+        type=lambda x: LearningTask(x),
+        help="Learning task of the model (Must match the original training objective)",
+    )
+    parser.add_argument("--id_file", default="deepmath.txt", help="Name of the ID file found in id_files/")
+
+    parser.add_argument(
+        "--nodes",
+        default="all",
+        choices=["all", "conjecture", "premise"],
+        help="The type of nodes to use in the final embedding",
+    )
+    parser.add_argument("--result_infix_path", default="")
+
+    parser.add_argument(
+        "--print_distances",
+        action="store_true",
+        default=False,
+        help="Prints the euclidean and cosine distance matrix for the computed embedding vectors",
+    )
+    parser.add_argument(
+        "--benchmark_type",
+        default=BenchmarkType.DEEPMATH,
+        choices=list(BenchmarkType),
+        type=lambda x: BenchmarkType(x),
+        help="Benchmark type of the problems.",
+    )
+    parser.add_argument(
+        "--in_memory", action="store_true", help="Set dataset to in memory (may not always work)"
+    )
+
+    return parser
 
 
 def print_embedding_distances(embeddings):
@@ -55,13 +70,6 @@ def print_embedding_distances(embeddings):
     print()
 
 
-def get_activation(name):
-    def hook(model, input, output):
-        activation[name] = output.detach()
-
-    return hook
-
-
 def encode(model, data, nodes=None):
     model.eval()  # Trick to make sure the batch-normalisation does not mess up
 
@@ -71,10 +79,7 @@ def encode(model, data, nodes=None):
             batch = batch.to(config.device)
             if batch.name[0] == "JJT00107+1.p":
                 print(batch.x)
-            _ = model(batch)
-
-            # Get output of dense layer
-            emb = activation["dense"]
+            emb, _ = model(batch)
 
             if nodes == "premise":
                 # Extract the premise nodes
@@ -96,45 +101,38 @@ def encode(model, data, nodes=None):
 
 
 def main():
-
+    parser = get_extraction_parser()
     args = parser.parse_args()
 
-    # Get set of problems
-    if args.library == "tptp":
-        # data = mk_loader_ltb("graph_data", args.id_file, batch_size=1, shuffle=False)
-        print("HERE")
-        # data = mk_loader_ltb("graph_data", args.id_file, caption='/shareddata/home/holden/axiom_caption/generated_problems/mizar_40/sine_1_1/', batch_size=1, shuffle=False)
-        data = mk_loader_ltb(
-            "graph_data",
-            args.id_file,
-            caption="/shareddata/home/holden/axiom_caption/generated_problems/mizar_40/sine_1_1/",
-            batch_size=1,
-            shuffle=False,
-        )
-    else:
-        # data = mk_loader("graph_data", args.id_file, batch_size=1, shuffle=False)
-        data = get_data_loader(Path(__file__).parent, args.id_file, batch_size=1, shuffle=False)
-
-    print("Number of problems: ", len(data))
-
     # Load the model
-    model = Model(17).to(config.device)
-    model.load_state_dict(torch.load(args.model_path))
-    # Create hook for getting the intermediate output
-    model.dense.register_forward_hook(get_activation("dense"))
+    model = load_model(args.model_dir, args.learning_task)
+    model = model.to(config.device)
+    model.eval()
+
+    # Get data loader
+    graph_params = load_graph_params(args.model_dir)
+    graph_data = get_data_loader(
+        args.id_file,
+        args.benchmark_type,
+        batch_size=1,
+        shuffle=False,
+        task=args.learning_task,
+        in_memory=args.in_memory,
+        **graph_params
+    )
+    print("Number of problems: ", len(graph_data))
 
     # Compute model embeddings
     print("Computing problem embeddings")
-    embeddings = encode(model, data, nodes=args.nodes)
+    embeddings = encode(model, graph_data, nodes=args.nodes)
 
     # Save to path
-
-    # TODO
     res_path = os.path.join(
         "embeddings",
-        "graph_features_mizar_merged_sine_1_1" + Path(args.id_file).stem + "_" + args.nodes + ".pkl",
+        args.result_infix_path + Path(args.id_file).stem + "_" + args.nodes + ".pkl",
     )
     dump(embeddings, open(res_path, "wb"))
+    print("Saved to:", res_path)
 
     # Make feature matrix
     if args.print_distances:

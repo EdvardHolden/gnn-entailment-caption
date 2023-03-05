@@ -69,8 +69,9 @@ It assumes that the models exists from previous experiments and can be changed f
 # Compute embeddings
 
 Run the script `extract_features.py` and set the input arguments to fit the desired requirements.
-e.g.
-**TODO**
+e.g. (assuming there is a pre-trained model in experiment/premise/test)
+
+```python3 extract_features.py experiments/premise/test/ premise --id_file id_files/deepmath.txt --nodes conjecture```
 
 
 # Generate Unsupervised Datasets
