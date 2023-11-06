@@ -11,6 +11,13 @@ The main purposes are:
 * Notebooks with EDA on the data + plotting
 * Computing and extracting graph embeddings from a pre-trained model with three different pooling operations
 
+There are two main training tasks: supervised training on the binary premise selection task:
+<img src="figs/gnn_supervised_axioms.png" alt="HOS-ML" class="center">
+
+
+and unsupervised learning of the Laplacian Spectrum distance between pairs of graphs:
+<img src="figs/gnn_unsupervised_siamese.png" alt="HOS-ML" class="center">
+
 
 # Installation
 
@@ -42,7 +49,7 @@ The extended dataset used for evaluation is found in `merged_problems.zip`
 # Experiments
 
 Problem representation experiments for the thesis chapter, described briefly here.
-Consists of three main experiments over two tasks: premise selection and graph similarity.
+It Consists of three main experiments over two tasks: premise selection and graph similarity.
 Need to specify the model parameters in the respective `params.json` files.
 
 ## Experiment 1: Graph connectivity and GCN direction
